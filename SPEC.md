@@ -39,7 +39,7 @@ SQL TUI client in Rust. Connect, query, browse. Three backends: SQLite, PostgreS
 id|status|task|deps
 T1|x|scaffold: Cargo.toml, src/main.rs, module skeleton, basic ratatui event loop with empty render|-
 T2|x|define `Database` trait: connect, disconnect, execute, list_tables, list_columns, list_views|-
-T3|~|SQLite adapter: implement `Database` trait using `rusqlite` + `spawn_blocking`|T2
+T3|x|SQLite adapter: implement `Database` trait using `rusqlite` + `spawn_blocking`|T2
 T4|.|PostgreSQL adapter: implement `Database` trait using `sqlx::PgPool`|T2
 T5|.|MySQL adapter: implement `Database` trait using `sqlx::MySqlPool`|T2
 T6|x|connection config: TOML structs, load/save `~/.sqrit/connections.toml`, CRUD operations|-
