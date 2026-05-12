@@ -1,6 +1,7 @@
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use sqrit::app::{App, FocusedPane};
 use sqrit::config::{Config, Connection, DbType};
+use sqrit::editor::EditorBuffer;
 use sqrit::mode::Mode;
 use sqrit::picker::PickerState;
 
@@ -24,8 +25,7 @@ fn make_connected_app() -> App {
         picker: PickerState::new(),
         db: None,
         focused_pane: FocusedPane::Query,
-        query_text: String::new(),
-        query_cursor: 0,
+        editor: EditorBuffer::new(),
         status_message: String::new(),
     }
 }

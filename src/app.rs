@@ -11,6 +11,7 @@ use ratatui::Terminal;
 
 use crate::config::Config;
 use crate::db::Database;
+use crate::editor::EditorBuffer;
 use crate::mode::Mode;
 use crate::picker::PickerState;
 
@@ -28,8 +29,7 @@ pub struct App {
     pub picker: PickerState,
     pub db: Option<Box<dyn Database>>,
     pub focused_pane: FocusedPane,
-    pub query_text: String,
-    pub query_cursor: usize,
+    pub editor: EditorBuffer,
     pub status_message: String,
 }
 
@@ -43,8 +43,7 @@ impl App {
             picker: PickerState::new(),
             db: None,
             focused_pane: FocusedPane::Query,
-            query_text: String::new(),
-            query_cursor: 0,
+            editor: EditorBuffer::new(),
             status_message: String::new(),
         })
     }
@@ -142,7 +141,7 @@ impl App {
         let query_inner = query_block.inner(query_area);
         frame.render_widget(query_block, query_area);
 
-        let query_paragraph = Paragraph::new(self.query_text.as_str());
+        let query_paragraph = Paragraph::new(self.editor.text());
         frame.render_widget(query_paragraph, query_inner);
 
         // Results pane

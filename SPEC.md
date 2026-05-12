@@ -45,7 +45,7 @@ T5|.|MySQL adapter: implement `Database` trait using `sqlx::MySqlPool`|T2
 T6|x|connection config: TOML structs, load/save `~/.sqrit/connections.toml`, CRUD operations|-
 T7|x|connection picker screen: list saved connections, filter by name, select to connect|T6,T3
 T8|x|3-pane layout: Explorer sidebar (left), Query (top-right), Results (bottom-right). Status bar bottom.|T1
-T9|.|query editor insert mode: raw text input, backspace, arrow keys, home/end, multiline|T8
+T9|x|query editor insert mode: raw text input, backspace, arrow keys, home/end, multiline|T8
 T10|.|query editor normal mode: `i`→insert, `h/j/k/l`, `w/b`, `0/$`, `gg/G`, `dd`, `yy`, `p`, `x`, `u`|T9
 T11|.|SQL syntax highlighting: tokenize query text, color keywords/types/strings/comments|T9
 T12|.|query execution: wire `Enter` (normal) and `Ctrl+Enter` (insert) to `Database::execute`, show status|T3,T10
