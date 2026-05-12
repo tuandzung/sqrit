@@ -53,6 +53,7 @@ pub struct App {
     pub results_state: ResultsState,
     pub last_query: Option<String>,
     pub explorer_state: ExplorerState,
+    pub pending_space: bool,
 }
 
 impl App {
@@ -74,6 +75,7 @@ impl App {
             results_state: ResultsState::new(),
             last_query: None,
             explorer_state: ExplorerState::new(),
+            pending_space: false,
         })
     }
 

@@ -98,6 +98,7 @@ fn make_paginated_app() -> App {
         pending_query: None,
         last_query: None,
         explorer_state: ExplorerState::new(),
+        pending_space: false,
         results_state: ResultsState::new(),
     }
 }

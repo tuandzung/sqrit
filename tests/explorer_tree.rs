@@ -119,6 +119,7 @@ fn make_explorer_app() -> App {
         last_query: None,
         results_state: ResultsState::new(),
         explorer_state,
+        pending_space: false,
     }
 }
 

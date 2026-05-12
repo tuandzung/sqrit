@@ -40,6 +40,7 @@ fn make_app(names: &[&str]) -> App {
         pending_query: None,
         last_query: None,
         explorer_state: ExplorerState::new(),
+        pending_space: false,
         results_state: sqrit::results::ResultsState::new(),
     }
 }
