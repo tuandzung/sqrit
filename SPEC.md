@@ -50,7 +50,7 @@ T10|x|query editor normal mode: `i`→insert, `h/j/k/l`, `w/b`, `0/$`, `gg/G`, `
 T11|x|SQL syntax highlighting: tokenize query text, color keywords/types/strings/comments|T9
 T12|x|query execution: wire `Enter` (normal) and `Ctrl+Enter` (insert) to `Database::execute`, show status|T3,T10
 T13|x|results table: render `Vec<Row>` as scrollable table, column headers, `h/j/k/l` cell nav|T8,T12
-T14|.|results pagination: fetch page-size chunks, `PgDn`/`PgUp` load next/prev page|T13,V6
+T14|x|results pagination: fetch page-size chunks, `PgDn`/`PgUp` load next/prev page|T13,V6
 T15|.|results copy/export: `yc` copy cell, `yy` copy row, `ya` copy all, export to CSV/JSON|T13,I6
 T16|.|explorer tree: render schema tree (tables→columns, views→columns), expand/collapse with Enter|T8,T3
 T17|.|explorer actions: `s` runs `SELECT * FROM <table> LIMIT 100`, toggle explorer `<space>e`|T16,T12

@@ -63,6 +63,8 @@ On first run, the connection picker appears. Connections are stored in `~/.sqrit
 | Key | Action |
 |-----|--------|
 | `h/j/k/l` or arrows | Navigate cells |
+| `PgDn` | Next page of results |
+| `PgUp` | Previous page of results |
 | `q` | Back to query editor |
 
 ## Configuration

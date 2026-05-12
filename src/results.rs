@@ -3,6 +3,9 @@ pub struct ResultsState {
     pub selected_col: usize,
     pub scroll_row: usize,
     pub visible_rows: usize,
+    pub page_size: usize,
+    pub page_offset: usize,
+    pub has_next_page: bool,
 }
 
 impl ResultsState {
@@ -12,7 +15,35 @@ impl ResultsState {
             selected_col: 0,
             scroll_row: 0,
             visible_rows: 20,
+            page_size: 50,
+            page_offset: 0,
+            has_next_page: false,
         }
+    }
+
+    pub fn page_down(&mut self) {
+        self.page_offset += self.page_size;
+        self.selected_row = 0;
+        self.selected_col = 0;
+        self.scroll_row = 0;
+    }
+
+    pub fn page_up(&mut self) {
+        if self.page_offset == 0 {
+            return;
+        }
+        self.page_offset = self.page_offset.saturating_sub(self.page_size);
+        self.selected_row = 0;
+        self.selected_col = 0;
+        self.scroll_row = 0;
+    }
+
+    pub fn reset_pagination(&mut self) {
+        self.page_offset = 0;
+        self.selected_row = 0;
+        self.selected_col = 0;
+        self.scroll_row = 0;
+        self.has_next_page = false;
     }
 
     pub fn move_down(&mut self, total_rows: usize) {

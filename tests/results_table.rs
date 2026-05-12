@@ -137,6 +137,7 @@ fn make_results_app(rows: usize) -> App {
         results: Some(results),
         query_status: QueryStatus::Success,
         pending_query: None,
+        last_query: None,
         results_state: ResultsState::new(),
     }
 }

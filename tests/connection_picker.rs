@@ -37,6 +37,7 @@ fn make_app(names: &[&str]) -> App {
         results: None,
         query_status: sqrit::app::QueryStatus::Idle,
         pending_query: None,
+        last_query: None,
         results_state: sqrit::results::ResultsState::new(),
     }
 }

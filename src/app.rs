@@ -50,6 +50,7 @@ pub struct App {
     pub query_status: QueryStatus,
     pub pending_query: Option<String>,
     pub results_state: ResultsState,
+    pub last_query: Option<String>,
 }
 
 impl App {
@@ -69,6 +70,7 @@ impl App {
             query_status: QueryStatus::Idle,
             pending_query: None,
             results_state: ResultsState::new(),
+            last_query: None,
         })
     }
 
@@ -79,11 +81,30 @@ impl App {
         };
 
         self.query_status = QueryStatus::Running;
+        self.last_query = Some(query.clone());
+
+        let is_select = query.trim_start().to_uppercase().starts_with("SELECT");
 
         if let Some(ref db) = self.db {
-            match db.execute(&query).await {
-                Ok(result) => {
-                    self.results = Some(result);
+            let result = if is_select {
+                let offset = self.results_state.page_offset as u64;
+                let limit = self.results_state.page_size as u64 + 1;
+                db.execute_paginated(&query, offset, limit).await
+            } else {
+                db.execute(&query).await
+            };
+
+            match result {
+                Ok(mut r) => {
+                    if is_select {
+                        if r.rows.len() > self.results_state.page_size {
+                            self.results_state.has_next_page = true;
+                            r.rows.truncate(self.results_state.page_size);
+                        } else {
+                            self.results_state.has_next_page = false;
+                        }
+                    }
+                    self.results = Some(r);
                     self.query_status = QueryStatus::Success;
                 }
                 Err(e) => {

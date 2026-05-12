@@ -13,6 +13,22 @@ pub fn handle_key(key: KeyEvent, app: &mut App) {
         KeyCode::Char('k') | KeyCode::Up => app.results_state.move_up(),
         KeyCode::Char('h') | KeyCode::Left => app.results_state.move_left(),
         KeyCode::Char('l') | KeyCode::Right => app.results_state.move_right(total_cols),
+        KeyCode::PageDown => {
+            if app.results_state.has_next_page {
+                app.results_state.page_down();
+                if let Some(ref q) = app.last_query {
+                    app.pending_query = Some(q.clone());
+                }
+            }
+        }
+        KeyCode::PageUp => {
+            if app.results_state.page_offset > 0 {
+                app.results_state.page_up();
+                if let Some(ref q) = app.last_query {
+                    app.pending_query = Some(q.clone());
+                }
+            }
+        }
         _ => {}
     }
 }
