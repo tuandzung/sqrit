@@ -5,6 +5,7 @@ use sqrit::editor::EditorBuffer;
 use sqrit::mode::Mode;
 use sqrit::mode::editor::normal::NormalState;
 use sqrit::picker::PickerState;
+use sqrit::explorer::ExplorerState;
 
 fn make_connected_app() -> App {
     let config = Config {
@@ -33,6 +34,7 @@ fn make_connected_app() -> App {
         query_status: QueryStatus::Idle,
         pending_query: None,
         last_query: None,
+        explorer_state: ExplorerState::new(),
         results_state: sqrit::results::ResultsState::new(),
     }
 }

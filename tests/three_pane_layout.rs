@@ -4,6 +4,7 @@ use sqrit::config::{Config, Connection, DbType};
 use sqrit::editor::EditorBuffer;
 use sqrit::mode::Mode;
 use sqrit::mode::editor::normal::NormalState;
+use sqrit::explorer::ExplorerState;
 use sqrit::picker::PickerState;
 
 fn make_connected_app() -> App {
@@ -33,6 +34,7 @@ fn make_connected_app() -> App {
         query_status: sqrit::app::QueryStatus::Idle,
         pending_query: None,
         last_query: None,
+        explorer_state: ExplorerState::new(),
         results_state: sqrit::results::ResultsState::new(),
     }
 }

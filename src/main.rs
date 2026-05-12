@@ -7,6 +7,7 @@ pub mod editor;
 pub mod sql;
 pub mod results;
 pub mod clipboard;
+pub mod explorer;
 
 use app::App;
 

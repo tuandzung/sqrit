@@ -7,6 +7,7 @@ use sqrit::mode::Mode;
 use sqrit::mode::editor::normal::NormalState;
 use sqrit::picker::PickerState;
 use sqrit::results::ResultsState;
+use sqrit::explorer::ExplorerState;
 use sqrit::db::types::{QueryResult, Value};
 
 fn make_result() -> QueryResult {
@@ -120,6 +121,7 @@ fn make_copy_app() -> App {
         query_status: QueryStatus::Success,
         pending_query: None,
         last_query: None,
+        explorer_state: ExplorerState::new(),
         results_state: ResultsState::new(),
     }
 }

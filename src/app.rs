@@ -13,6 +13,7 @@ use ratatui::Terminal;
 
 use crate::sql::{TokenKind, tokenize};
 use crate::results::ResultsState;
+use crate::explorer::ExplorerState;
 
 use crate::config::Config;
 use crate::db::Database;
@@ -51,6 +52,7 @@ pub struct App {
     pub pending_query: Option<String>,
     pub results_state: ResultsState,
     pub last_query: Option<String>,
+    pub explorer_state: ExplorerState,
 }
 
 impl App {
@@ -71,6 +73,7 @@ impl App {
             pending_query: None,
             results_state: ResultsState::new(),
             last_query: None,
+            explorer_state: ExplorerState::new(),
         })
     }
 
@@ -191,13 +194,43 @@ impl App {
 
         // Explorer pane
         let explorer_border = self.border_style(FocusedPane::Explorer);
-        frame.render_widget(
-            Block::default()
-                .title(" Explorer ")
-                .borders(Borders::ALL)
-                .border_style(explorer_border),
-            explorer_area,
-        );
+        let explorer_block = Block::default()
+            .title(" Explorer ")
+            .borders(Borders::ALL)
+            .border_style(explorer_border);
+        let explorer_inner = explorer_block.inner(explorer_area);
+        frame.render_widget(explorer_block, explorer_area);
+
+        let items = self.explorer_state.items();
+        let lines: Vec<Line<'_>> = items
+            .iter()
+            .enumerate()
+            .map(|(i, item)| {
+                let display = match item {
+                    crate::explorer::TreeItem::Table { name, expanded } => {
+                        let arrow = if *expanded { 'v' } else { '>' };
+                        format!("{} {}", arrow, name)
+                    }
+                    crate::explorer::TreeItem::Column { name, data_type, .. } => {
+                        format!("  {} ({})", name, data_type)
+                    }
+                    crate::explorer::TreeItem::View { name, expanded } => {
+                        let arrow = if *expanded { 'v' } else { '>' };
+                        format!("{} {}", arrow, name)
+                    }
+                    crate::explorer::TreeItem::ViewColumn { name, data_type, .. } => {
+                        format!("  {} ({})", name, data_type)
+                    }
+                };
+                let style = if i == self.explorer_state.selected {
+                    Style::default().bg(Color::DarkGray)
+                } else {
+                    Style::default()
+                };
+                Line::styled(display.to_string(), style)
+            })
+            .collect();
+        frame.render_widget(Paragraph::new(lines), explorer_inner);
 
         // Query pane
         let query_border = self.border_style(FocusedPane::Query);

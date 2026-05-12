@@ -36,6 +36,13 @@ On first run, the connection picker appears. Connections are stored in `~/.sqrit
 | Backspace | Clear filter |
 | `q` | Quit |
 
+#### Explorer
+| Key | Action |
+|-----|--------|
+| `j/k` or Up/Down | Navigate items |
+| Enter | Expand/collapse table or view |
+| `q` | Back to query editor |
+
 #### Query Editor — Normal Mode
 | Key | Action |
 |-----|--------|

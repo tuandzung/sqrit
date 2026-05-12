@@ -6,6 +6,7 @@ use sqrit::mode::Mode;
 use sqrit::mode::editor::normal::NormalState;
 use sqrit::picker::PickerState;
 use sqrit::results::ResultsState;
+use sqrit::explorer::ExplorerState;
 
 // T13 #1: default state
 #[test]
@@ -138,6 +139,7 @@ fn make_results_app(rows: usize) -> App {
         query_status: QueryStatus::Success,
         pending_query: None,
         last_query: None,
+        explorer_state: ExplorerState::new(),
         results_state: ResultsState::new(),
     }
 }

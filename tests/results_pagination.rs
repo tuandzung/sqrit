@@ -6,6 +6,7 @@ use sqrit::mode::Mode;
 use sqrit::mode::editor::normal::NormalState;
 use sqrit::picker::PickerState;
 use sqrit::results::ResultsState;
+use sqrit::explorer::ExplorerState;
 
 // T14 #1: page_down advances offset by page_size, resets selection
 #[test]
@@ -96,6 +97,7 @@ fn make_paginated_app() -> App {
         query_status: QueryStatus::Success,
         pending_query: None,
         last_query: None,
+        explorer_state: ExplorerState::new(),
         results_state: ResultsState::new(),
     }
 }
