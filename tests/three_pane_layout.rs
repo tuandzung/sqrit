@@ -3,6 +3,7 @@ use sqrit::app::{App, FocusedPane};
 use sqrit::config::{Config, Connection, DbType};
 use sqrit::editor::EditorBuffer;
 use sqrit::mode::Mode;
+use sqrit::mode::editor::normal::NormalState;
 use sqrit::picker::PickerState;
 
 fn make_connected_app() -> App {
@@ -26,6 +27,7 @@ fn make_connected_app() -> App {
         db: None,
         focused_pane: FocusedPane::Query,
         editor: EditorBuffer::new(),
+        normal_state: NormalState::new(),
         status_message: String::new(),
     }
 }

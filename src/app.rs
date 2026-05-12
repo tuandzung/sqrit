@@ -13,6 +13,7 @@ use crate::config::Config;
 use crate::db::Database;
 use crate::editor::EditorBuffer;
 use crate::mode::Mode;
+use crate::mode::editor::normal::NormalState;
 use crate::picker::PickerState;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -30,6 +31,7 @@ pub struct App {
     pub db: Option<Box<dyn Database>>,
     pub focused_pane: FocusedPane,
     pub editor: EditorBuffer,
+    pub normal_state: NormalState,
     pub status_message: String,
 }
 
@@ -44,6 +46,7 @@ impl App {
             db: None,
             focused_pane: FocusedPane::Query,
             editor: EditorBuffer::new(),
+            normal_state: NormalState::new(),
             status_message: String::new(),
         })
     }

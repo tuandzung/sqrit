@@ -148,3 +148,130 @@ fn insert_in_middle_of_text() {
     assert_eq!(buf.text(), "abc");
     assert_eq!(buf.cursor(), (0, 2));
 }
+
+// T10 #1: word_forward moves to next word
+#[test]
+fn word_forward_moves_to_next_word() {
+    let mut buf = EditorBuffer::new();
+    buf.insert_str("hello world foo");
+    buf.home();
+    // cursor at 0
+    buf.word_forward();
+    assert_eq!(buf.cursor_col(), 6); // start of "world"
+    buf.word_forward();
+    assert_eq!(buf.cursor_col(), 12); // start of "foo"
+}
+
+// T10 #2: word_backward moves to previous word
+#[test]
+fn word_backward_moves_to_previous_word() {
+    let mut buf = EditorBuffer::new();
+    buf.insert_str("hello world foo");
+    buf.end();
+    // cursor at end (col 14)
+    buf.word_backward();
+    assert_eq!(buf.cursor_col(), 12); // start of "foo"
+    buf.word_backward();
+    assert_eq!(buf.cursor_col(), 6); // start of "world"
+}
+
+// T10 #3: delete_char deletes char at cursor
+#[test]
+fn delete_char_removes_at_cursor() {
+    let mut buf = EditorBuffer::new();
+    buf.insert_str("abc");
+    buf.home();
+    buf.cursor_right(); // col 1, cursor on 'b'
+    buf.delete_char();
+    assert_eq!(buf.text(), "ac");
+    assert_eq!(buf.cursor_col(), 1);
+}
+
+// T10 #4: delete_line removes current line and returns it
+#[test]
+fn delete_line_removes_and_returns_line() {
+    let mut buf = EditorBuffer::new();
+    buf.insert_str("line1\nline2\nline3");
+    buf.go_top();       // row 0
+    buf.cursor_down();   // row 1
+    let deleted = buf.delete_line();
+    assert_eq!(deleted, Some("line2".to_string()));
+    assert_eq!(buf.text(), "line1\nline3");
+    assert_eq!(buf.cursor_row(), 1);
+}
+
+// T10 #5: yank_line returns current line without deleting
+#[test]
+fn yank_line_returns_current_line() {
+    let mut buf = EditorBuffer::new();
+    buf.insert_str("line1\nline2");
+    buf.cursor_down();
+    let yanked = buf.yank_line();
+    assert_eq!(yanked, "line2");
+    assert_eq!(buf.text(), "line1\nline2");
+}
+
+// T10 #6: paste_below inserts line below
+#[test]
+fn paste_below_inserts_line() {
+    let mut buf = EditorBuffer::new();
+    buf.insert_str("line1\nline3");
+    buf.go_top(); // row 0
+    buf.paste_below("line2");
+    assert_eq!(buf.text(), "line1\nline2\nline3");
+    assert_eq!(buf.cursor_row(), 1);
+}
+
+// T10 #7: go_top moves to first line start
+#[test]
+fn go_top_moves_to_first_line() {
+    let mut buf = EditorBuffer::new();
+    buf.insert_str("a\nb\nc");
+    buf.go_bottom();
+    buf.go_top();
+    assert_eq!(buf.cursor(), (0, 0));
+}
+
+// T10 #8: go_bottom moves to last line start
+#[test]
+fn go_bottom_moves_to_last_line() {
+    let mut buf = EditorBuffer::new();
+    buf.insert_str("a\nb\nc");
+    buf.go_bottom();
+    assert_eq!(buf.cursor_row(), 2);
+    assert_eq!(buf.cursor_col(), 0);
+}
+
+// T10 #9: undo reverts last change
+#[test]
+fn undo_reverts_insert_char() {
+    let mut buf = EditorBuffer::new();
+    buf.insert_char('a');
+    buf.undo();
+    assert_eq!(buf.text(), "");
+}
+
+#[test]
+fn undo_reverts_multiple_inserts_one_at_a_time() {
+    let mut buf = EditorBuffer::new();
+    buf.insert_char('a');
+    buf.insert_char('b');
+    buf.undo();
+    assert_eq!(buf.text(), "a");
+    buf.undo();
+    assert_eq!(buf.text(), "");
+}
+
+// T10 #10: undo reverts delete_line (single operation)
+#[test]
+fn undo_reverts_delete_line() {
+    let mut buf = EditorBuffer::new();
+    buf.insert_char('a');
+    // undo stack: [""]
+    // text: "a"
+    let deleted = buf.delete_line();
+    assert_eq!(deleted, Some("a".to_string()));
+    assert_eq!(buf.text(), "");
+    buf.undo();
+    assert_eq!(buf.text(), "a");
+}
