@@ -47,7 +47,7 @@ T7|x|connection picker screen: list saved connections, filter by name, select to
 T8|x|3-pane layout: Explorer sidebar (left), Query (top-right), Results (bottom-right). Status bar bottom.|T1
 T9|x|query editor insert mode: raw text input, backspace, arrow keys, home/end, multiline|T8
 T10|x|query editor normal mode: `i`→insert, `h/j/k/l`, `w/b`, `0/$`, `gg/G`, `dd`, `yy`, `p`, `x`, `u`|T9
-T11|.|SQL syntax highlighting: tokenize query text, color keywords/types/strings/comments|T9
+T11|x|SQL syntax highlighting: tokenize query text, color keywords/types/strings/comments|T9
 T12|.|query execution: wire `Enter` (normal) and `Ctrl+Enter` (insert) to `Database::execute`, show status|T3,T10
 T13|.|results table: render `Vec<Row>` as scrollable table, column headers, `h/j/k/l` cell nav|T8,T12
 T14|.|results pagination: fetch page-size chunks, `PgDn`/`PgUp` load next/prev page|T13,V6

@@ -6,8 +6,12 @@ use crossterm::terminal::{
 };
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::style::{Color, Modifier, Style};
+use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 use ratatui::Terminal;
+
+use crate::sql::{TokenKind, tokenize};
 
 use crate::config::Config;
 use crate::db::Database;
@@ -144,7 +148,8 @@ impl App {
         let query_inner = query_block.inner(query_area);
         frame.render_widget(query_block, query_area);
 
-        let query_paragraph = Paragraph::new(self.editor.text());
+        let query_text = self.highlighted_lines();
+        let query_paragraph = Paragraph::new(query_text);
         frame.render_widget(query_paragraph, query_inner);
 
         // Results pane
@@ -181,6 +186,49 @@ impl App {
         } else {
             ratatui::style::Style::default()
         }
+    }
+
+    fn token_style(kind: &TokenKind) -> Style {
+        match kind {
+            TokenKind::Keyword => Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD),
+            TokenKind::Type => Style::default().fg(Color::Magenta),
+            TokenKind::String => Style::default().fg(Color::Green),
+            TokenKind::Comment => Style::default().fg(Color::DarkGray),
+            TokenKind::Number => Style::default().fg(Color::Yellow),
+            TokenKind::Operator => Style::default().fg(Color::Cyan),
+            TokenKind::Punctuation => Style::default().fg(Color::White),
+            TokenKind::Identifier => Style::default().fg(Color::White),
+            TokenKind::Whitespace => Style::default(),
+        }
+    }
+
+    fn highlighted_lines(&self) -> Vec<Line<'_>> {
+        let text = self.editor.text();
+        let tokens = tokenize(&text);
+        let mut lines: Vec<Line<'_>> = Vec::new();
+        let mut current_spans: Vec<Span<'_>> = Vec::new();
+
+        for token in tokens {
+            for (i, line_text) in token.text.split('\n').enumerate() {
+                if i > 0 {
+                    lines.push(Line::from(std::mem::take(&mut current_spans)));
+                }
+                if !line_text.is_empty() {
+                    current_spans.push(Span::styled(
+                        line_text.to_string(),
+                        Self::token_style(&token.kind),
+                    ));
+                }
+            }
+        }
+
+        if current_spans.is_empty() && lines.is_empty() {
+            lines.push(Line::from(""));
+        } else if !current_spans.is_empty() {
+            lines.push(Line::from(current_spans));
+        }
+
+        lines
     }
 
     fn render_picker(&self, frame: &mut ratatui::Frame, area: Rect) {
