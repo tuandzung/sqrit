@@ -32,6 +32,7 @@ fn make_connected_app() -> App {
         results: None,
         query_status: sqrit::app::QueryStatus::Idle,
         pending_query: None,
+        results_state: sqrit::results::ResultsState::new(),
     }
 }
 

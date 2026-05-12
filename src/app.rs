@@ -8,10 +8,11 @@ use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::widgets::{Block, Borders, Paragraph, Table, Row as TableRow, Cell};
 use ratatui::Terminal;
 
 use crate::sql::{TokenKind, tokenize};
+use crate::results::ResultsState;
 
 use crate::config::Config;
 use crate::db::Database;
@@ -48,6 +49,7 @@ pub struct App {
     pub results: Option<crate::db::types::QueryResult>,
     pub query_status: QueryStatus,
     pub pending_query: Option<String>,
+    pub results_state: ResultsState,
 }
 
 impl App {
@@ -66,6 +68,7 @@ impl App {
             results: None,
             query_status: QueryStatus::Idle,
             pending_query: None,
+            results_state: ResultsState::new(),
         })
     }
 
@@ -195,13 +198,51 @@ impl App {
 
         // Results pane
         let results_border = self.border_style(FocusedPane::Results);
-        frame.render_widget(
-            Block::default()
-                .title(" Results ")
-                .borders(Borders::ALL)
-                .border_style(results_border),
-            results_area,
-        );
+        let results_block = Block::default()
+            .title(" Results ")
+            .borders(Borders::ALL)
+            .border_style(results_border);
+        let results_inner = results_block.inner(results_area);
+        frame.render_widget(results_block, results_area);
+
+        if let Some(ref result) = self.results {
+            if !result.columns.is_empty() {
+                let header_cells: Vec<Cell> = result.columns.iter()
+                    .map(|c| Cell::from(c.as_str()).style(Style::default().fg(Color::Cyan)))
+                    .collect();
+                let header = TableRow::new(header_cells)
+                    .style(Style::default().add_modifier(Modifier::BOLD));
+
+                let rows: Vec<TableRow> = result.rows.iter()
+                    .skip(self.results_state.scroll_row)
+                    .take(self.results_state.visible_rows)
+                    .enumerate()
+                    .map(|(i, row)| {
+                        let cells: Vec<Cell> = result.columns.iter()
+                            .map(|col| {
+                                let val = row.get(col).map(|v| v.to_string()).unwrap_or_default();
+                                Cell::from(val)
+                            })
+                            .collect();
+                        let is_selected_row = i + self.results_state.scroll_row == self.results_state.selected_row;
+                        let style = if is_selected_row {
+                            Style::default().bg(Color::DarkGray)
+                        } else {
+                            Style::default()
+                        };
+                        TableRow::new(cells).style(style)
+                    })
+                    .collect();
+
+                let widths: Vec<ratatui::layout::Constraint> = result.columns.iter()
+                    .map(|_| ratatui::layout::Constraint::Ratio(1, result.columns.len() as u32))
+                    .collect();
+
+                let table = Table::new(rows, &widths)
+                    .header(header);
+                frame.render_widget(table, results_inner);
+            }
+        }
 
         // Status bar
         let conn_name = self
