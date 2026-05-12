@@ -27,6 +27,14 @@ pub enum FocusedPane {
     Results,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum QueryStatus {
+    Idle,
+    Running,
+    Success,
+    Error(String),
+}
+
 pub struct App {
     pub mode: Mode,
     pub config: Config,
@@ -37,6 +45,9 @@ pub struct App {
     pub editor: EditorBuffer,
     pub normal_state: NormalState,
     pub status_message: String,
+    pub results: Option<crate::db::types::QueryResult>,
+    pub query_status: QueryStatus,
+    pub pending_query: Option<String>,
 }
 
 impl App {
@@ -52,7 +63,33 @@ impl App {
             editor: EditorBuffer::new(),
             normal_state: NormalState::new(),
             status_message: String::new(),
+            results: None,
+            query_status: QueryStatus::Idle,
+            pending_query: None,
         })
+    }
+
+    pub async fn execute_pending(&mut self) {
+        let query = match self.pending_query.take() {
+            Some(q) => q,
+            None => return,
+        };
+
+        self.query_status = QueryStatus::Running;
+
+        if let Some(ref db) = self.db {
+            match db.execute(&query).await {
+                Ok(result) => {
+                    self.results = Some(result);
+                    self.query_status = QueryStatus::Success;
+                }
+                Err(e) => {
+                    self.query_status = QueryStatus::Error(e.to_string());
+                }
+            }
+        } else {
+            self.query_status = QueryStatus::Error("No database connection".to_string());
+        }
     }
 
     pub async fn run(&mut self) -> anyhow::Result<()> {
@@ -72,6 +109,10 @@ impl App {
                         mode.handle_key(key, self);
                     }
                 }
+            }
+
+            if self.pending_query.is_some() {
+                self.execute_pending().await;
             }
 
             if self.should_quit {

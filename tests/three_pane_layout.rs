@@ -29,6 +29,9 @@ fn make_connected_app() -> App {
         editor: EditorBuffer::new(),
         normal_state: NormalState::new(),
         status_message: String::new(),
+        results: None,
+        query_status: sqrit::app::QueryStatus::Idle,
+        pending_query: None,
     }
 }
 

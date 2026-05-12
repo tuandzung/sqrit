@@ -33,6 +33,11 @@ pub fn handle_key(key: KeyEvent, app: &mut App) {
     }
 
     match key.code {
+        // Execute query
+        KeyCode::Enter => {
+            app.pending_query = Some(app.editor.text());
+        }
+
         // Mode switch
         KeyCode::Char('i') => app.mode = Mode::QueryInsert,
 

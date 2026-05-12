@@ -48,7 +48,7 @@ T8|x|3-pane layout: Explorer sidebar (left), Query (top-right), Results (bottom-
 T9|x|query editor insert mode: raw text input, backspace, arrow keys, home/end, multiline|T8
 T10|x|query editor normal mode: `i`→insert, `h/j/k/l`, `w/b`, `0/$`, `gg/G`, `dd`, `yy`, `p`, `x`, `u`|T9
 T11|x|SQL syntax highlighting: tokenize query text, color keywords/types/strings/comments|T9
-T12|.|query execution: wire `Enter` (normal) and `Ctrl+Enter` (insert) to `Database::execute`, show status|T3,T10
+T12|x|query execution: wire `Enter` (normal) and `Ctrl+Enter` (insert) to `Database::execute`, show status|T3,T10
 T13|.|results table: render `Vec<Row>` as scrollable table, column headers, `h/j/k/l` cell nav|T8,T12
 T14|.|results pagination: fetch page-size chunks, `PgDn`/`PgUp` load next/prev page|T13,V6
 T15|.|results copy/export: `yc` copy cell, `yy` copy row, `ya` copy all, export to CSV/JSON|T13,I6

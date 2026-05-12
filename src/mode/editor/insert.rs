@@ -1,10 +1,13 @@
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyModifiers, KeyEvent};
 
 use crate::app::App;
 use crate::mode::Mode;
 
 pub fn handle_key(key: KeyEvent, app: &mut App) {
     match key.code {
+        KeyCode::Enter if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            app.pending_query = Some(app.editor.text());
+        }
         KeyCode::Esc => app.mode = Mode::QueryNormal,
         KeyCode::Char(c) => app.editor.insert_char(c),
         KeyCode::Backspace => app.editor.backspace(),
