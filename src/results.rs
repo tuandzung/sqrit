@@ -6,6 +6,7 @@ pub struct ResultsState {
     pub page_size: usize,
     pub page_offset: usize,
     pub has_next_page: bool,
+    pub pending_yank: bool,
 }
 
 impl ResultsState {
@@ -18,6 +19,7 @@ impl ResultsState {
             page_size: 50,
             page_offset: 0,
             has_next_page: false,
+            pending_yank: false,
         }
     }
 

@@ -65,6 +65,9 @@ On first run, the connection picker appears. Connections are stored in `~/.sqrit
 | `h/j/k/l` or arrows | Navigate cells |
 | `PgDn` | Next page of results |
 | `PgUp` | Previous page of results |
+| `yc` | Copy selected cell |
+| `yy` | Copy selected row (TSV) |
+| `ya` | Copy all rows with header (TSV) |
 | `q` | Back to query editor |
 
 ## Configuration
