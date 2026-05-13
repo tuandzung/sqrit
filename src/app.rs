@@ -283,7 +283,7 @@ impl App {
                             } else {
                                 Style::default()
                             };
-                            Line::styled(s.clone(), style)
+                            Line::styled(s.to_string(), style)
                         })
                         .collect();
                     let popup_block = Block::default()

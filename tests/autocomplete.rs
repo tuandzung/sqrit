@@ -6,7 +6,7 @@ fn open_shows_popup_with_candidates_and_selects_first() {
     state.open(vec!["SELECT".into(), "INSERT".into(), "UPDATE".into()]);
 
     assert!(state.is_visible());
-    assert_eq!(state.filtered(), &["SELECT", "INSERT", "UPDATE"]);
+    assert_eq!(state.filtered(), vec!["SELECT", "INSERT", "UPDATE"]);
     assert_eq!(state.selected_index(), 0);
 }
 
@@ -35,6 +35,13 @@ fn accept_returns_none_when_not_visible() {
     let mut state = AutocompleteState::new();
     assert!(!state.is_visible());
     assert_eq!(state.accept(), None);
+}
+
+#[test]
+fn open_with_empty_candidates_stays_hidden() {
+    let mut state = AutocompleteState::new();
+    state.open(vec![]);
+    assert!(!state.is_visible());
 }
 
 #[test]
@@ -69,7 +76,7 @@ fn filter_narrows_candidates_case_insensitive() {
     state.open(vec!["SELECT".into(), "INSERT".into(), "UPDATE".into(), "DELETE".into()]);
 
     state.filter("se");
-    assert_eq!(state.filtered(), &["SELECT"]);
+    assert_eq!(state.filtered(), vec!["SELECT"]);
     assert_eq!(state.selected_index(), 0);
 }
 
@@ -81,7 +88,7 @@ fn filter_resets_selection() {
     assert_eq!(state.selected_index(), 1);
 
     state.filter("s");
-    assert_eq!(state.filtered(), &["SELECT", "SET", "SHOW"]);
+    assert_eq!(state.filtered(), vec!["SELECT", "SET", "SHOW"]);
     assert_eq!(state.selected_index(), 0); // reset to first
 }
 

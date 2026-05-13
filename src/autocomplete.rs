@@ -1,6 +1,6 @@
 pub struct AutocompleteState {
     candidates: Vec<String>,
-    filtered: Vec<String>,
+    filtered_indices: Vec<usize>,
     selected: usize,
     visible: bool,
 }
@@ -9,15 +9,18 @@ impl AutocompleteState {
     pub fn new() -> Self {
         Self {
             candidates: Vec::new(),
-            filtered: Vec::new(),
+            filtered_indices: Vec::new(),
             selected: 0,
             visible: false,
         }
     }
 
     pub fn open(&mut self, candidates: Vec<String>) {
-        self.candidates = candidates.clone();
-        self.filtered = candidates;
+        if candidates.is_empty() {
+            return;
+        }
+        self.candidates = candidates;
+        self.filtered_indices = (0..self.candidates.len()).collect();
         self.selected = 0;
         self.visible = true;
     }
@@ -26,8 +29,11 @@ impl AutocompleteState {
         self.visible
     }
 
-    pub fn filtered(&self) -> &[String] {
-        &self.filtered
+    pub fn filtered(&self) -> Vec<&str> {
+        self.filtered_indices
+            .iter()
+            .map(|&i| self.candidates[i].as_str())
+            .collect()
     }
 
     pub fn selected_index(&self) -> usize {
@@ -42,32 +48,36 @@ impl AutocompleteState {
         if !self.visible {
             return None;
         }
-        let choice = self.filtered.get(self.selected).cloned();
+        let choice = self
+            .filtered_indices
+            .get(self.selected)
+            .map(|&i| self.candidates[i].clone());
         self.visible = false;
         choice
     }
 
     pub fn next(&mut self) {
-        if self.filtered.is_empty() {
+        if self.filtered_indices.is_empty() {
             return;
         }
-        self.selected = (self.selected + 1) % self.filtered.len();
+        self.selected = (self.selected + 1) % self.filtered_indices.len();
     }
 
     pub fn prev(&mut self) {
-        if self.filtered.is_empty() {
+        if self.filtered_indices.is_empty() {
             return;
         }
-        self.selected = (self.selected + self.filtered.len() - 1) % self.filtered.len();
+        self.selected = (self.selected + self.filtered_indices.len() - 1) % self.filtered_indices.len();
     }
 
     pub fn filter(&mut self, prefix: &str) {
         let lower = prefix.to_lowercase();
-        self.filtered = self
+        self.filtered_indices = self
             .candidates
             .iter()
-            .filter(|c| c.to_lowercase().starts_with(&lower))
-            .cloned()
+            .enumerate()
+            .filter(|(_, c)| c.to_lowercase().starts_with(&lower))
+            .map(|(i, _)| i)
             .collect();
         self.selected = 0;
     }
