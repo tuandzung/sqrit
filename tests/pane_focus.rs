@@ -21,6 +21,7 @@ fn make_app() -> App {
         last_query: None,
         explorer_state: sqrit::explorer::ExplorerState::new(),
         pending_space: false,
+            maximized: None,
         autocomplete: sqrit::autocomplete::AutocompleteState::new(),
         last_keystroke: None,
         pending_schema_load: false,

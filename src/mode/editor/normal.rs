@@ -20,14 +20,6 @@ impl NormalState {
 pub fn handle_key(key: KeyEvent, app: &mut App) {
     let state = &mut app.normal_state;
 
-    // Handle pending space prefix
-    if app.pending_space {
-        app.pending_space = false;
-        match key.code {
-            _ => return,
-        }
-    }
-
     // Handle pending 'g' prefix
     if state.pending_g {
         state.pending_g = false;

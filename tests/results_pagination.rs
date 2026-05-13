@@ -99,6 +99,7 @@ fn make_paginated_app() -> App {
         last_query: None,
         explorer_state: ExplorerState::new(),
         pending_space: false,
+            maximized: None,
             autocomplete: sqrit::autocomplete::AutocompleteState::new(),
             active_connection: None,
         results_state: ResultsState::new(),

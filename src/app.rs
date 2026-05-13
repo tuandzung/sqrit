@@ -56,6 +56,7 @@ pub struct App {
     pub last_query: Option<String>,
     pub explorer_state: ExplorerState,
     pub pending_space: bool,
+    pub maximized: Option<FocusedPane>,
     pub autocomplete: AutocompleteState,
     pub last_keystroke: Option<Instant>,
     pub pending_schema_load: bool,
@@ -84,6 +85,7 @@ impl App {
             last_query: None,
             explorer_state: ExplorerState::new(),
             pending_space: false,
+            maximized: None,
             autocomplete: AutocompleteState::new(),
             last_keystroke: None,
             pending_schema_load: false,
@@ -118,8 +120,28 @@ impl App {
 
     /// Process a single key event via the current mode handler.
     pub fn handle_key_event(&mut self, key: crossterm::event::KeyEvent) {
+        use crossterm::event::KeyCode;
+
+        // Global space prefix: space+f toggles maximize (works from any mode)
+        if self.pending_space {
+            self.pending_space = false;
+            if key.code == KeyCode::Char('f') {
+                self.toggle_maximize();
+                return;
+            }
+            // Unknown space combo — pass through to mode handler
+        }
+
         let mode = self.mode;
         mode.handle_key(key, self);
+    }
+
+    pub fn toggle_maximize(&mut self) {
+        if self.maximized.is_some() {
+            self.maximized = None;
+        } else {
+            self.maximized = Some(self.focused_pane);
+        }
     }
 
     pub async fn execute_pending(&mut self) {
@@ -231,7 +253,19 @@ impl App {
             ..area
         };
 
-        // Explorer | Right side
+        // Maximized: render only focused pane full-screen
+        if let Some(maximized_pane) = self.maximized {
+            match maximized_pane {
+                FocusedPane::Explorer => self.render_explorer(frame, main_area),
+                FocusedPane::Query => self.render_query(frame, main_area),
+                FocusedPane::Results => self.render_results(frame, main_area),
+            }
+            let status_text = self.status_bar_text();
+            frame.render_widget(Paragraph::new(status_text), status_area);
+            return;
+        }
+
+        // Normal 3-pane layout
         let main_chunks = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Length(25), Constraint::Min(0)])
@@ -240,7 +274,6 @@ impl App {
         let explorer_area = main_chunks[0];
         let right_area = main_chunks[1];
 
-        // Query | Results
         let right_chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
@@ -249,14 +282,22 @@ impl App {
         let query_area = right_chunks[0];
         let results_area = right_chunks[1];
 
-        // Explorer pane
-        let explorer_border = self.border_style(FocusedPane::Explorer);
-        let explorer_block = Block::default()
+        self.render_explorer(frame, explorer_area);
+        self.render_query(frame, query_area);
+        self.render_results(frame, results_area);
+
+        let status_text = self.status_bar_text();
+        frame.render_widget(Paragraph::new(status_text), status_area);
+    }
+
+    fn render_explorer(&self, frame: &mut ratatui::Frame, area: Rect) {
+        let border = self.border_style(FocusedPane::Explorer);
+        let block = Block::default()
             .title(" Explorer ")
             .borders(Borders::ALL)
-            .border_style(explorer_border);
-        let explorer_inner = explorer_block.inner(explorer_area);
-        frame.render_widget(explorer_block, explorer_area);
+            .border_style(border);
+        let inner = block.inner(area);
+        frame.render_widget(block, area);
 
         let items = self.explorer_state.items();
         let lines: Vec<Line<'_>> = items
@@ -287,25 +328,26 @@ impl App {
                 Line::styled(display.to_string(), style)
             })
             .collect();
-        frame.render_widget(Paragraph::new(lines), explorer_inner);
+        frame.render_widget(Paragraph::new(lines), inner);
+    }
 
-        // Query pane
-        let query_border = self.border_style(FocusedPane::Query);
+    fn render_query(&self, frame: &mut ratatui::Frame, area: Rect) {
+        let border = self.border_style(FocusedPane::Query);
         let mode_label = match self.mode {
             Mode::QueryNormal => " NORMAL ",
             Mode::QueryInsert => " INSERT ",
             _ => "",
         };
-        let query_block = Block::default()
+        let block = Block::default()
             .title(format!(" Query {} ", mode_label))
             .borders(Borders::ALL)
-            .border_style(query_border);
-        let query_inner = query_block.inner(query_area);
-        frame.render_widget(query_block, query_area);
+            .border_style(border);
+        let inner = block.inner(area);
+        frame.render_widget(block, area);
 
         let query_text = self.highlighted_lines();
         let query_paragraph = Paragraph::new(query_text);
-        frame.render_widget(query_paragraph, query_inner);
+        frame.render_widget(query_paragraph, inner);
 
         // Autocomplete popup
         if self.autocomplete.is_visible() {
@@ -315,13 +357,13 @@ impl App {
                 let popup_height = filtered.len().min(max_visible) as u16 + 2;
                 let popup_width = 30u16;
                 let cursor_row = self.editor.cursor_row() as u16;
-                let popup_y = query_inner.y + cursor_row.saturating_add(1).min(query_inner.height);
-                let popup_x = query_inner.x + self.editor.cursor_col() as u16;
+                let popup_y = inner.y + cursor_row.saturating_add(1).min(inner.height);
+                let popup_x = inner.x + self.editor.cursor_col() as u16;
                 let popup_area = Rect {
-                    x: popup_x.min(query_inner.right().saturating_sub(popup_width)),
-                    y: popup_y.min(query_inner.bottom().saturating_sub(popup_height)),
-                    width: popup_width.min(query_inner.width),
-                    height: popup_height.min(query_inner.bottom().saturating_sub(popup_y)),
+                    x: popup_x.min(inner.right().saturating_sub(popup_width)),
+                    y: popup_y.min(inner.bottom().saturating_sub(popup_height)),
+                    width: popup_width.min(inner.width),
+                    height: popup_height.min(inner.bottom().saturating_sub(popup_y)),
                 };
                 if popup_area.width > 0 && popup_area.height > 0 {
                     frame.render_widget(Clear, popup_area);
@@ -346,15 +388,16 @@ impl App {
                 }
             }
         }
+    }
 
-        // Results pane
-        let results_border = self.border_style(FocusedPane::Results);
-        let results_block = Block::default()
+    fn render_results(&self, frame: &mut ratatui::Frame, area: Rect) {
+        let border = self.border_style(FocusedPane::Results);
+        let block = Block::default()
             .title(" Results ")
             .borders(Borders::ALL)
-            .border_style(results_border);
-        let results_inner = results_block.inner(results_area);
-        frame.render_widget(results_block, results_area);
+            .border_style(border);
+        let inner = block.inner(area);
+        frame.render_widget(block, area);
 
         if let Some(ref result) = self.results {
             if !result.columns.is_empty() {
@@ -391,13 +434,9 @@ impl App {
 
                 let table = Table::new(rows, &widths)
                     .header(header);
-                frame.render_widget(table, results_inner);
+                frame.render_widget(table, inner);
             }
         }
-
-        // Status bar
-        let status_text = self.status_bar_text();
-        frame.render_widget(Paragraph::new(status_text), status_area);
     }
 
     /// Switch mode and focused_pane to the given pane. Single source of truth
