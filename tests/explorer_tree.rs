@@ -120,6 +120,7 @@ fn make_explorer_app() -> App {
         results_state: ResultsState::new(),
         explorer_state,
         pending_space: false,
+            maximized: None,
             autocomplete: sqrit::autocomplete::AutocompleteState::new(),
             active_connection: None,
         last_keystroke: None,
