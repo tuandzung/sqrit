@@ -148,6 +148,7 @@ impl Database for PgAdapter {
         offset: u64,
         limit: u64,
     ) -> anyhow::Result<QueryResult> {
+        let query = query.trim_end().trim_end_matches(';');
         let paginated = format!(
             "SELECT * FROM ({}) AS sub LIMIT {} OFFSET {}",
             query, limit, offset

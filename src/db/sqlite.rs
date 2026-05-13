@@ -85,6 +85,7 @@ impl Database for SqliteAdapter {
         offset: u64,
         limit: u64,
     ) -> anyhow::Result<QueryResult> {
+        let query = query.trim_end().trim_end_matches(';');
         let paginated = format!(
             "SELECT * FROM ({}) LIMIT {} OFFSET {}",
             query, limit, offset

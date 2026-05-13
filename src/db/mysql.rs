@@ -17,7 +17,8 @@ fn mysql_row_to_value(row: &sqlx::mysql::MySqlRow, i: usize) -> Value {
                 "FLOAT" | "DOUBLE" => Value::Float(row.get::<f64, _>(i)),
                 "TINYINT UNSIGNED" | "SMALLINT UNSIGNED" | "INT UNSIGNED"
                 | "MEDIUMINT UNSIGNED" | "BIGINT UNSIGNED" => {
-                    Value::Integer(row.get::<u64, _>(i) as i64)
+                    let val = row.get::<u64, _>(i);
+                    Value::Text(val.to_string())
                 }
                 _ => {
                     let s: Result<String, _> = row.try_get(i);
@@ -149,6 +150,7 @@ impl Database for MySqlAdapter {
         offset: u64,
         limit: u64,
     ) -> anyhow::Result<QueryResult> {
+        let query = query.trim_end().trim_end_matches(';');
         let paginated = format!(
             "SELECT * FROM ({}) AS sub LIMIT {} OFFSET {}",
             query, limit, offset

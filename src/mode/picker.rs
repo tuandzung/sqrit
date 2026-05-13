@@ -8,9 +8,12 @@ use crate::db::sqlite::SqliteAdapter;
 use crate::mode::Mode;
 
 fn build_url(scheme: &str, user: &str, password: &str, host: &str, port: u16, database: &str) -> String {
+    let user = urlencoding::encode(user);
+    let database = urlencoding::encode(database);
     if password.is_empty() {
         format!("{}://{}@{}:{}/{}", scheme, user, host, port, database)
     } else {
+        let password = urlencoding::encode(password);
         format!("{}://{}:{}@{}:{}/{}", scheme, user, password, host, port, database)
     }
 }
