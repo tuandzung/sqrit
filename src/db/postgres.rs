@@ -21,15 +21,50 @@ fn pg_row_to_value(row: &sqlx::postgres::PgRow, i: usize) -> Value {
                     Value::Text(row.get::<String, _>(i))
                 }
                 _ => {
+                    let type_name = raw.type_info().name().to_string();
                     let s: Result<String, _> = row.try_get(i);
                     match s {
                         Ok(s) => Value::Text(s),
-                        Err(_) => Value::Text(format!("<unsupported>")),
+                        Err(_) => Value::Text(format!("<unsupported pg type: {}>", type_name)),
                     }
                 }
             }
         }
     })
+}
+
+/// Determine if a SQL statement returns rows (SELECT, WITH/CTE, VALUES, TABLE).
+/// Skips leading whitespace, line/block comments to find the first keyword.
+fn is_query_returning_rows(sql: &str) -> bool {
+    let s = sql.trim_start();
+    if s.is_empty() {
+        return false;
+    }
+
+    // Skip over leading comments
+    let mut rest = s;
+    loop {
+        let trimmed = rest.trim_start();
+        if let Some(stripped) = trimmed.strip_prefix("--") {
+            rest = stripped.find('\n').map_or("", |i| &trimmed[i + 1..]);
+        } else if let Some(stripped) = trimmed.strip_prefix("/*") {
+            rest = stripped.find("*/").map_or("", |i| &trimmed[i + 2..]);
+        } else {
+            break;
+        }
+    }
+
+    let first_word = rest
+        .trim_start()
+        .split(|c: char| !c.is_alphanumeric() && c != '_')
+        .next()
+        .unwrap_or("")
+        .to_uppercase();
+
+    matches!(
+        first_word.as_str(),
+        "SELECT" | "WITH" | "VALUES" | "TABLE"
+    )
 }
 
 pub struct PgAdapter {
@@ -63,7 +98,7 @@ impl Database for PgAdapter {
 
     async fn execute(&self, query: &str) -> anyhow::Result<QueryResult> {
         let pool = self.pool.as_ref().ok_or_else(|| anyhow::anyhow!("not connected"))?;
-        let is_select = query.trim_start().to_uppercase().starts_with("SELECT");
+        let is_select = is_query_returning_rows(query);
 
         if is_select {
             let rows = sqlx::query(query).fetch_all(pool).await?;
@@ -114,7 +149,7 @@ impl Database for PgAdapter {
         limit: u64,
     ) -> anyhow::Result<QueryResult> {
         let paginated = format!(
-            "SELECT * FROM ({}) LIMIT {} OFFSET {}",
+            "SELECT * FROM ({}) AS sub LIMIT {} OFFSET {}",
             query, limit, offset
         );
         self.execute(&paginated).await

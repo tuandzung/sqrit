@@ -73,7 +73,7 @@ async fn execute_insert_returns_rows_affected() {
     assert_eq!(result.rows_affected, Some(1));
 }
 
-// #4 execute SELECT returns correct columns and rows
+// #4 execute SELECT returns correct columns and rows, including NULLs
 #[tokio::test]
 async fn execute_select_returns_columns_and_rows() {
     let table = unique_table("select");
@@ -86,6 +86,10 @@ async fn execute_select_returns_columns_and_rows() {
         .execute(&format!("INSERT INTO \"{}\" (name, active) VALUES ('bob', false)", table))
         .await
         .unwrap();
+    adapter
+        .execute(&format!("INSERT INTO \"{}\" (name, active) VALUES ('carol', NULL)", table))
+        .await
+        .unwrap();
 
     let result = adapter
         .execute(&format!("SELECT id, name, active FROM \"{}\" ORDER BY id", table))
@@ -93,11 +97,13 @@ async fn execute_select_returns_columns_and_rows() {
         .unwrap();
 
     assert_eq!(result.columns, vec!["id", "name", "active"]);
-    assert_eq!(result.rows.len(), 2);
+    assert_eq!(result.rows.len(), 3);
     assert_eq!(result.rows[0].get("name").unwrap(), &Value::Text("alice".into()));
     assert_eq!(result.rows[0].get("active").unwrap(), &Value::Boolean(true));
     assert_eq!(result.rows[1].get("name").unwrap(), &Value::Text("bob".into()));
     assert_eq!(result.rows[1].get("active").unwrap(), &Value::Boolean(false));
+    assert_eq!(result.rows[2].get("name").unwrap(), &Value::Text("carol".into()));
+    assert_eq!(result.rows[2].get("active").unwrap(), &Value::Null);
 }
 
 // #5 list_tables after CREATE TABLE includes the table
@@ -118,13 +124,16 @@ async fn list_columns_returns_column_info() {
     assert_eq!(columns.len(), 3);
 
     assert_eq!(columns[0].name, "id");
+    assert_eq!(columns[0].data_type, "integer");
     assert!(columns[0].is_primary_key);
     assert!(!columns[0].nullable);
 
     assert_eq!(columns[1].name, "name");
+    assert_eq!(columns[1].data_type, "text");
     assert!(!columns[1].nullable);
 
     assert_eq!(columns[2].name, "active");
+    assert_eq!(columns[2].data_type, "boolean");
     assert!(columns[2].nullable);
 }
 
