@@ -40,8 +40,8 @@ id|status|task|deps
 T1|x|scaffold: Cargo.toml, src/main.rs, module skeleton, basic ratatui event loop with empty render|-
 T2|x|define `Database` trait: connect, disconnect, execute, list_tables, list_columns, list_views|-
 T3|x|SQLite adapter: implement `Database` trait using `rusqlite` + `spawn_blocking`|T2
-T4|.|PostgreSQL adapter: implement `Database` trait using `sqlx::PgPool`|T2
-T5|.|MySQL adapter: implement `Database` trait using `sqlx::MySqlPool`|T2
+T4|x|PostgreSQL adapter: implement `Database` trait using `sqlx::PgPool`|T2
+T5|x|MySQL adapter: implement `Database` trait using `sqlx::MySqlPool`|T2
 T6|x|connection config: TOML structs, load/save `~/.sqrit/connections.toml`, CRUD operations|-
 T7|x|connection picker screen: list saved connections, filter by name, select to connect|T6,T3
 T8|x|3-pane layout: Explorer sidebar (left), Query (top-right), Results (bottom-right). Status bar bottom.|T1
