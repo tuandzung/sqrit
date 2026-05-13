@@ -97,22 +97,13 @@ fn s_on_column_uses_parent_table() {
     assert_eq!(app.pending_query, Some("SELECT * FROM users LIMIT 100".to_string()));
 }
 
-// T17 #3: space+e from QueryNormal switches to Explorer
+// T22: e from QueryNormal switches to Explorer (was space+e, now bare e)
 #[test]
-fn space_e_switches_to_explorer() {
+fn e_switches_to_explorer() {
     let mut app = make_explorer_app();
     app.mode = Mode::QueryNormal;
     app.focused_pane = FocusedPane::Query;
 
-    // Press space
-    let space_key = crossterm::event::KeyEvent::new(
-        crossterm::event::KeyCode::Char(' '),
-        crossterm::event::KeyModifiers::NONE,
-    );
-    let mode = app.mode;
-    mode.handle_key(space_key, &mut app);
-
-    // Press e
     let e_key = crossterm::event::KeyEvent::new(
         crossterm::event::KeyCode::Char('e'),
         crossterm::event::KeyModifiers::NONE,

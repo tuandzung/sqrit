@@ -41,7 +41,18 @@ pub fn handle_key(key: KeyEvent, app: &mut App) {
     }
 
     match key.code {
-        KeyCode::Char('q') => app.mode = Mode::QueryNormal,
+        KeyCode::Char('q') => {
+            app.mode = Mode::QueryNormal;
+            app.focused_pane = crate::app::FocusedPane::Query;
+        }
+        KeyCode::Char('e') => {
+            app.mode = Mode::Explorer;
+            app.focused_pane = crate::app::FocusedPane::Explorer;
+        }
+        KeyCode::Char('r') => {
+            // Already in Results — just ensure focus
+            app.focused_pane = crate::app::FocusedPane::Results;
+        }
         KeyCode::Char('j') | KeyCode::Down => app.results_state.move_down(total_rows),
         KeyCode::Char('k') | KeyCode::Up => app.results_state.move_up(),
         KeyCode::Char('h') | KeyCode::Left => app.results_state.move_left(),

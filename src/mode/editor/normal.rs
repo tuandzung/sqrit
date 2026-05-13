@@ -24,11 +24,6 @@ pub fn handle_key(key: KeyEvent, app: &mut App) {
     if app.pending_space {
         app.pending_space = false;
         match key.code {
-            KeyCode::Char('e') => {
-                app.mode = Mode::Explorer;
-                app.focused_pane = crate::app::FocusedPane::Explorer;
-                return;
-            }
             _ => return,
         }
     }
@@ -94,6 +89,16 @@ pub fn handle_key(key: KeyEvent, app: &mut App) {
 
         // Undo
         KeyCode::Char('u') => app.editor.undo(),
+
+        // Pane focus
+        KeyCode::Char('e') => {
+            app.mode = Mode::Explorer;
+            app.focused_pane = crate::app::FocusedPane::Explorer;
+        }
+        KeyCode::Char('r') => {
+            app.mode = Mode::Results;
+            app.focused_pane = crate::app::FocusedPane::Results;
+        }
 
         // Space prefix
         KeyCode::Char(' ') => {
