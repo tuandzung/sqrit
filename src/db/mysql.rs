@@ -45,9 +45,9 @@ fn is_query_returning_rows(sql: &str) -> bool {
     loop {
         let trimmed = rest.trim_start();
         if let Some(stripped) = trimmed.strip_prefix("--") {
-            rest = stripped.find('\n').map_or("", |i| &trimmed[i + 1..]);
+            rest = stripped.find('\n').map_or("", |i| &stripped[i + 1..]);
         } else if let Some(stripped) = trimmed.strip_prefix("/*") {
-            rest = stripped.find("*/").map_or("", |i| &trimmed[i + 2..]);
+            rest = stripped.find("*/").map_or("", |i| &stripped[i + 2..]);
         } else {
             break;
         }
