@@ -5,6 +5,16 @@ use crossterm::event::{KeyCode, KeyModifiers, KeyEvent};
 use crate::app::App;
 use crate::mode::Mode;
 
+fn update_autocomplete(app: &mut App) {
+    app.last_keystroke = Some(Instant::now());
+    if app.autocomplete.is_visible() {
+        let text = app.editor.text();
+        let (row, col) = app.editor.cursor();
+        let prefix = crate::autocomplete::current_word_prefix(&text, row, col);
+        app.autocomplete.filter(&prefix);
+    }
+}
+
 pub fn handle_key(key: KeyEvent, app: &mut App) {
     match key.code {
         KeyCode::Enter if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -26,23 +36,11 @@ pub fn handle_key(key: KeyEvent, app: &mut App) {
         }
         KeyCode::Char(c) => {
             app.editor.insert_char(c);
-            app.last_keystroke = Some(Instant::now());
-            if app.autocomplete.is_visible() {
-                let text = app.editor.text();
-                let (row, col) = app.editor.cursor();
-                let prefix = crate::autocomplete::current_word_prefix(&text, row, col);
-                app.autocomplete.filter(&prefix);
-            }
+            update_autocomplete(app);
         }
         KeyCode::Backspace => {
             app.editor.backspace();
-            app.last_keystroke = Some(Instant::now());
-            if app.autocomplete.is_visible() {
-                let text = app.editor.text();
-                let (row, col) = app.editor.cursor();
-                let prefix = crate::autocomplete::current_word_prefix(&text, row, col);
-                app.autocomplete.filter(&prefix);
-            }
+            update_autocomplete(app);
         }
         KeyCode::Enter => app.editor.insert_newline(),
         KeyCode::Left => app.editor.cursor_left(),

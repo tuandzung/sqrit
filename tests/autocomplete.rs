@@ -134,6 +134,36 @@ fn current_word_prefix_with_underscore() {
 }
 
 #[test]
+fn current_word_prefix_empty_when_col_beyond_line() {
+    assert_eq!(current_word_prefix("SELECT", 0, 10), "");
+}
+
+#[test]
+fn current_word_prefix_empty_when_row_beyond_last_line() {
+    assert_eq!(current_word_prefix("SELECT\nFROM", 5, 0), "");
+}
+
+#[test]
+fn current_word_prefix_empty_after_dot() {
+    assert_eq!(current_word_prefix("schema.table", 0, 7), "");
+}
+
+#[test]
+fn current_word_prefix_empty_after_paren() {
+    assert_eq!(current_word_prefix("func(", 0, 5), "");
+}
+
+#[test]
+fn current_word_prefix_empty_after_comma() {
+    assert_eq!(current_word_prefix("a, b", 0, 2), "");
+}
+
+#[test]
+fn current_word_prefix_multiline_targets_second_line() {
+    assert_eq!(current_word_prefix("SELECT\ncol1\ncol2", 1, 3), "col");
+}
+
+#[test]
 fn suggest_returns_keywords_matching_prefix() {
     let results = suggest("SEL", None);
     assert!(results.contains(&"SELECT".to_string()));

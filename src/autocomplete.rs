@@ -14,49 +14,53 @@ pub fn current_word_prefix(text: &str, row: usize, col: usize) -> String {
     chars[start..col].iter().collect()
 }
 
+fn prefix_matches(candidate: &str, prefix: &str) -> bool {
+    candidate.len() >= prefix.len()
+        && candidate[..prefix.len()].eq_ignore_ascii_case(prefix)
+}
+
 pub fn suggest(prefix: &str, schema: Option<&crate::db::types::SchemaInfo>) -> Vec<String> {
     if prefix.is_empty() {
         return Vec::new();
     }
-    let lower = prefix.to_lowercase();
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut results: Vec<String> = Vec::new();
 
     for kw in crate::sql::keywords() {
-        if kw.to_lowercase().starts_with(&lower) && seen.insert(kw.to_string()) {
+        if prefix_matches(kw, prefix) && seen.insert(kw.to_string()) {
             results.push(kw.to_string());
         }
     }
     for ty in crate::sql::types() {
-        if ty.to_lowercase().starts_with(&lower) && seen.insert(ty.to_string()) {
+        if prefix_matches(ty, prefix) && seen.insert(ty.to_string()) {
             results.push(ty.to_string());
         }
     }
 
     if let Some(schema) = schema {
-        for table in &schema.tables {
-            if table.name.to_lowercase().starts_with(&lower) && seen.insert(table.name.clone()) {
-                results.push(table.name.clone());
-            }
-            for col in &table.columns {
-                if col.name.to_lowercase().starts_with(&lower) && seen.insert(col.name.clone()) {
-                    results.push(col.name.clone());
-                }
-            }
-        }
-        for view in &schema.views {
-            if view.name.to_lowercase().starts_with(&lower) && seen.insert(view.name.clone()) {
-                results.push(view.name.clone());
-            }
-            for col in &view.columns {
-                if col.name.to_lowercase().starts_with(&lower) && seen.insert(col.name.clone()) {
-                    results.push(col.name.clone());
-                }
-            }
-        }
+        add_schema_items(&schema.tables.iter().map(|t| (t.name.as_str(), t.columns.as_slice())).collect::<Vec<_>>(), prefix, &mut seen, &mut results);
+        add_schema_items(&schema.views.iter().map(|v| (v.name.as_str(), v.columns.as_slice())).collect::<Vec<_>>(), prefix, &mut seen, &mut results);
     }
 
     results
+}
+
+fn add_schema_items<'a>(
+    items: &[(&'a str, &'a [crate::db::types::ColumnInfo])],
+    prefix: &str,
+    seen: &mut std::collections::HashSet<String>,
+    results: &mut Vec<String>,
+) {
+    for (name, columns) in items {
+        if prefix_matches(name, prefix) && seen.insert(name.to_string()) {
+            results.push(name.to_string());
+        }
+        for col in *columns {
+            if prefix_matches(&col.name, prefix) && seen.insert(col.name.clone()) {
+                results.push(col.name.clone());
+            }
+        }
+    }
 }
 
 pub struct AutocompleteState {

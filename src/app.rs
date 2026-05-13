@@ -91,6 +91,37 @@ impl App {
         })
     }
 
+    /// Check if autocomplete should trigger after idle timeout (V7).
+    /// Call from event loop; also testable directly.
+    pub fn tick_autocomplete(&mut self) {
+        if self.mode != Mode::QueryInsert {
+            return;
+        }
+        if let Some(last) = self.last_keystroke {
+            if last.elapsed() >= std::time::Duration::from_millis(300) {
+                if !self.autocomplete.is_visible() {
+                    let text = self.editor.text();
+                    let (row, col) = self.editor.cursor();
+                    let prefix = crate::autocomplete::current_word_prefix(&text, row, col);
+                    let candidates = crate::autocomplete::suggest(
+                        &prefix,
+                        self.explorer_state.schema.as_ref(),
+                    );
+                    if !candidates.is_empty() {
+                        self.autocomplete.open(candidates);
+                    }
+                }
+                self.last_keystroke = None;
+            }
+        }
+    }
+
+    /// Process a single key event via the current mode handler.
+    pub fn handle_key_event(&mut self, key: crossterm::event::KeyEvent) {
+        let mode = self.mode;
+        mode.handle_key(key, self);
+    }
+
     pub async fn execute_pending(&mut self) {
         let query = match self.pending_query.take() {
             Some(q) => q,
@@ -152,26 +183,7 @@ impl App {
                 }
             }
 
-            // Autocomplete: trigger after 300ms idle in insert mode (V7)
-            if self.mode == Mode::QueryInsert {
-                if let Some(last) = self.last_keystroke {
-                    if last.elapsed() >= std::time::Duration::from_millis(300) {
-                        if !self.autocomplete.is_visible() {
-                            let text = self.editor.text();
-                            let (row, col) = self.editor.cursor();
-                            let prefix = crate::autocomplete::current_word_prefix(&text, row, col);
-                            let candidates = crate::autocomplete::suggest(
-                                &prefix,
-                                self.explorer_state.schema.as_ref(),
-                            );
-                            if !candidates.is_empty() {
-                                self.autocomplete.open(candidates);
-                            }
-                        }
-                        self.last_keystroke = None;
-                    }
-                }
-            }
+            self.tick_autocomplete();
 
             if self.pending_query.is_some() {
                 self.execute_pending().await;
