@@ -59,7 +59,7 @@ T19|x|autocomplete engine: keyword list + table/column suggestions from current 
 T20|x|status bar: show mode, connection name, query status (idle/running/error), error messages|T8
 T21|x|maximize toggle: `<space>f` expands focused pane to full screen, toggle back|T8
 T22|x|pane focus: `e`/`q`/`r` keys switch focus to Explorer/Query/Results|T8
-T23|.|integration tests: test each adapter with real DB (SQLite file, PG/MySQL in Docker)|T3,T4,T5
+T23|x|integration tests: test each adapter with real DB (SQLite file, PG/MySQL in Docker)|T3,T4,T5
 
 ## §B — Bug Log
 
