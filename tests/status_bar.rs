@@ -83,3 +83,20 @@ fn status_bar_shows_error_message() {
     assert!(text.contains("ERR:"));
     assert!(text.contains("table not found"));
 }
+
+#[test]
+fn status_bar_shows_status_message_when_idle() {
+    let mut app = make_app();
+    app.status_message = "3 rows".to_string();
+    assert!(app.status_bar_text().contains("3 rows"));
+}
+
+#[test]
+fn status_bar_combines_query_status_and_message() {
+    let mut app = make_app();
+    app.query_status = QueryStatus::Success;
+    app.status_message = "3 rows".to_string();
+    let text = app.status_bar_text();
+    assert!(text.contains("ok"));
+    assert!(text.contains("3 rows"));
+}

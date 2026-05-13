@@ -26,4 +26,14 @@ impl Mode {
             Mode::Results => results::handle_key(key, app),
         }
     }
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            Mode::Picker => "PICKER",
+            Mode::Explorer => "EXPLORER",
+            Mode::QueryNormal => "NORMAL",
+            Mode::QueryInsert => "INSERT",
+            Mode::Results => "RESULTS",
+        }
+    }
 }

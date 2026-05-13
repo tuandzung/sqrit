@@ -56,6 +56,8 @@ pub struct App {
     pub explorer_state: ExplorerState,
     pub pending_space: bool,
     pub autocomplete: AutocompleteState,
+    // Set by picker on connect. Not cleared on disconnect — connection persists
+    // across query errors. Reset only when returning to picker or switching connections.
     pub active_connection: Option<String>,
 }
 
@@ -359,23 +361,29 @@ impl App {
     }
 
     pub fn status_bar_text(&self) -> String {
-        let mode_str = match self.mode {
-            Mode::Picker => "PICKER",
-            Mode::Explorer => "EXPLORER",
-            Mode::QueryNormal => "NORMAL",
-            Mode::QueryInsert => "INSERT",
-            Mode::Results => "RESULTS",
-        };
+        let mode_str = self.mode.label();
         let conn = self
             .active_connection
             .as_deref()
             .unwrap_or("no connection");
-        let status = match &self.query_status {
-            QueryStatus::Idle => String::new(),
-            QueryStatus::Running => "running...".to_string(),
-            QueryStatus::Success => "ok".to_string(),
-            QueryStatus::Error(e) => format!("ERR: {}", e),
+
+        let query_status: &str = match &self.query_status {
+            QueryStatus::Idle => "",
+            QueryStatus::Running => "running...",
+            QueryStatus::Success => "ok",
+            QueryStatus::Error(_) => "", // handled below
         };
+
+        let status = if let QueryStatus::Error(e) = &self.query_status {
+            format!("ERR: {}", e)
+        } else if self.status_message.is_empty() {
+            query_status.to_string()
+        } else if query_status.is_empty() {
+            self.status_message.clone()
+        } else {
+            format!("{} | {}", query_status, self.status_message)
+        };
+
         format!(" {} | {} | {}", mode_str, conn, status)
     }
 
