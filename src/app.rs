@@ -56,6 +56,9 @@ pub struct App {
     pub explorer_state: ExplorerState,
     pub pending_space: bool,
     pub autocomplete: AutocompleteState,
+    // Set by picker on connect. Not cleared on disconnect — connection persists
+    // across query errors. Reset only when returning to picker or switching connections.
+    pub active_connection: Option<String>,
 }
 
 impl App {
@@ -79,6 +82,7 @@ impl App {
             explorer_state: ExplorerState::new(),
             pending_space: false,
             autocomplete: AutocompleteState::new(),
+            active_connection: None,
         })
     }
 
@@ -344,20 +348,7 @@ impl App {
         }
 
         // Status bar
-        let conn_name = self
-            .config
-            .connections
-            .first()
-            .map(|c| c.name.as_str())
-            .unwrap_or("none");
-        let mode_str = match self.mode {
-            Mode::Explorer => "EXPLORER",
-            Mode::QueryNormal => "NORMAL",
-            Mode::QueryInsert => "INSERT",
-            Mode::Results => "RESULTS",
-            _ => "",
-        };
-        let status_text = format!(" {} | {} | {}", mode_str, conn_name, self.status_message);
+        let status_text = self.status_bar_text();
         frame.render_widget(Paragraph::new(status_text), status_area);
     }
 
@@ -367,6 +358,33 @@ impl App {
         } else {
             ratatui::style::Style::default()
         }
+    }
+
+    pub fn status_bar_text(&self) -> String {
+        let mode_str = self.mode.label();
+        let conn = self
+            .active_connection
+            .as_deref()
+            .unwrap_or("no connection");
+
+        let query_status: &str = match &self.query_status {
+            QueryStatus::Idle => "",
+            QueryStatus::Running => "running...",
+            QueryStatus::Success => "ok",
+            QueryStatus::Error(_) => "", // handled below
+        };
+
+        let status = if let QueryStatus::Error(e) = &self.query_status {
+            format!("ERR: {}", e)
+        } else if self.status_message.is_empty() {
+            query_status.to_string()
+        } else if query_status.is_empty() {
+            self.status_message.clone()
+        } else {
+            format!("{} | {}", query_status, self.status_message)
+        };
+
+        format!(" {} | {} | {}", mode_str, conn, status)
     }
 
     fn token_style(kind: &TokenKind) -> Style {

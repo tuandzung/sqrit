@@ -100,6 +100,7 @@ fn make_paginated_app() -> App {
         explorer_state: ExplorerState::new(),
         pending_space: false,
             autocomplete: sqrit::autocomplete::AutocompleteState::new(),
+            active_connection: None,
         results_state: ResultsState::new(),
     }
 }

@@ -37,6 +37,7 @@ fn make_connected_app() -> App {
         explorer_state: ExplorerState::new(),
         pending_space: false,
             autocomplete: sqrit::autocomplete::AutocompleteState::new(),
+            active_connection: None,
         results_state: sqrit::results::ResultsState::new(),
     }
 }

@@ -56,6 +56,7 @@ fn make_explorer_app() -> App {
         explorer_state,
         pending_space: false,
             autocomplete: sqrit::autocomplete::AutocompleteState::new(),
+            active_connection: None,
     }
 }
 
