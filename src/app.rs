@@ -122,7 +122,7 @@ impl App {
     pub fn handle_key_event(&mut self, key: crossterm::event::KeyEvent) {
         use crossterm::event::KeyCode;
 
-        // Global space prefix: space+f toggles maximize (works from any mode)
+        // Global space prefix: space+f toggles maximize (Explorer, QueryNormal, Results)
         if self.pending_space {
             self.pending_space = false;
             if key.code == KeyCode::Char('f') {
@@ -447,7 +447,11 @@ impl App {
     }
 
     pub fn border_style(&self, pane: FocusedPane) -> ratatui::style::Style {
-        if self.focused_pane == pane {
+        let is_focused = match self.maximized {
+            Some(maximized) => maximized == pane,
+            None => self.focused_pane == pane,
+        };
+        if is_focused {
             ratatui::style::Style::default().fg(ratatui::style::Color::Cyan)
         } else {
             ratatui::style::Style::default()
