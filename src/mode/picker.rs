@@ -2,8 +2,18 @@ use crossterm::event::{KeyCode, KeyEvent};
 
 use crate::app::App;
 use crate::config::DbType;
+use crate::db::mysql::MySqlAdapter;
+use crate::db::postgres::PgAdapter;
 use crate::db::sqlite::SqliteAdapter;
 use crate::mode::Mode;
+
+fn build_url(scheme: &str, user: &str, password: &str, host: &str, port: u16, database: &str) -> String {
+    if password.is_empty() {
+        format!("{}://{}@{}:{}/{}", scheme, user, host, port, database)
+    } else {
+        format!("{}://{}:{}@{}:{}/{}", scheme, user, password, host, port, database)
+    }
+}
 
 pub fn handle_key(key: KeyEvent, app: &mut App) {
     match key.code {
@@ -25,8 +35,27 @@ pub fn handle_key(key: KeyEvent, app: &mut App) {
                         let path = conn.file_path.clone().unwrap_or_default();
                         Box::new(SqliteAdapter::new(&path))
                     }
-                    DbType::Postgres | DbType::Mysql => {
-                        return;
+                    DbType::Postgres => {
+                        let url = build_url(
+                            "postgresql",
+                            conn.username.as_deref().unwrap_or("postgres"),
+                            conn.password.as_deref().unwrap_or(""),
+                            conn.host.as_deref().unwrap_or("localhost"),
+                            conn.port.unwrap_or(5432),
+                            conn.database.as_deref().unwrap_or("postgres"),
+                        );
+                        Box::new(PgAdapter::new(&url))
+                    }
+                    DbType::Mysql => {
+                        let url = build_url(
+                            "mysql",
+                            conn.username.as_deref().unwrap_or("root"),
+                            conn.password.as_deref().unwrap_or(""),
+                            conn.host.as_deref().unwrap_or("localhost"),
+                            conn.port.unwrap_or(3306),
+                            conn.database.as_deref().unwrap_or("mysql"),
+                        );
+                        Box::new(MySqlAdapter::new(&url))
                     }
                 };
                 app.db = Some(db);
