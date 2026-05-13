@@ -41,6 +41,7 @@ fn make_app(names: &[&str]) -> App {
         last_query: None,
         explorer_state: ExplorerState::new(),
         pending_space: false,
+            autocomplete: sqrit::autocomplete::AutocompleteState::new(),
         results_state: sqrit::results::ResultsState::new(),
     }
 }

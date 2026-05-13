@@ -8,13 +8,14 @@ use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Paragraph, Table, Row as TableRow, Cell};
+use ratatui::widgets::{Block, Borders, Clear, Paragraph, Table, Row as TableRow, Cell};
 use ratatui::Terminal;
 
 use crate::sql::{TokenKind, tokenize};
 use crate::results::ResultsState;
 use crate::explorer::ExplorerState;
 
+use crate::autocomplete::AutocompleteState;
 use crate::config::Config;
 use crate::db::Database;
 use crate::editor::EditorBuffer;
@@ -54,6 +55,7 @@ pub struct App {
     pub last_query: Option<String>,
     pub explorer_state: ExplorerState,
     pub pending_space: bool,
+    pub autocomplete: AutocompleteState,
 }
 
 impl App {
@@ -76,6 +78,7 @@ impl App {
             last_query: None,
             explorer_state: ExplorerState::new(),
             pending_space: false,
+            autocomplete: AutocompleteState::new(),
         })
     }
 
@@ -251,6 +254,46 @@ impl App {
         let query_text = self.highlighted_lines();
         let query_paragraph = Paragraph::new(query_text);
         frame.render_widget(query_paragraph, query_inner);
+
+        // Autocomplete popup
+        if self.autocomplete.is_visible() {
+            let filtered = self.autocomplete.filtered();
+            if !filtered.is_empty() {
+                let max_visible = 8usize;
+                let popup_height = filtered.len().min(max_visible) as u16 + 2;
+                let popup_width = 30u16;
+                let cursor_row = self.editor.cursor_row() as u16;
+                let popup_y = query_inner.y + cursor_row.saturating_add(1).min(query_inner.height);
+                let popup_x = query_inner.x + self.editor.cursor_col() as u16;
+                let popup_area = Rect {
+                    x: popup_x.min(query_inner.right().saturating_sub(popup_width)),
+                    y: popup_y.min(query_inner.bottom().saturating_sub(popup_height)),
+                    width: popup_width.min(query_inner.width),
+                    height: popup_height.min(query_inner.bottom().saturating_sub(popup_y)),
+                };
+                if popup_area.width > 0 && popup_area.height > 0 {
+                    frame.render_widget(Clear, popup_area);
+                    let items: Vec<Line<'_>> = filtered
+                        .iter()
+                        .take(max_visible)
+                        .enumerate()
+                        .map(|(i, s)| {
+                            let style = if i == self.autocomplete.selected_index() {
+                                Style::default().bg(Color::Cyan).fg(Color::Black)
+                            } else {
+                                Style::default()
+                            };
+                            Line::styled(s.to_string(), style)
+                        })
+                        .collect();
+                    let popup_block = Block::default()
+                        .borders(Borders::ALL)
+                        .border_style(Style::default().fg(Color::Cyan));
+                    let popup = Paragraph::new(items).block(popup_block);
+                    frame.render_widget(popup, popup_area);
+                }
+            }
+        }
 
         // Results pane
         let results_border = self.border_style(FocusedPane::Results);
