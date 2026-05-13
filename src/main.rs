@@ -1,3 +1,4 @@
+pub mod autocomplete;
 pub mod db;
 pub mod config;
 pub mod mode;

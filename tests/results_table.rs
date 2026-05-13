@@ -141,6 +141,7 @@ fn make_results_app(rows: usize) -> App {
         last_query: None,
         explorer_state: ExplorerState::new(),
         pending_space: false,
+            autocomplete: sqrit::autocomplete::AutocompleteState::new(),
         results_state: ResultsState::new(),
     }
 }
