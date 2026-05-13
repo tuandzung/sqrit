@@ -144,6 +144,8 @@ fn make_results_app(rows: usize) -> App {
             autocomplete: sqrit::autocomplete::AutocompleteState::new(),
             active_connection: None,
         results_state: ResultsState::new(),
+        last_keystroke: None,
+            pending_schema_load: false,
     }
 }
 

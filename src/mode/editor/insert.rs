@@ -1,7 +1,19 @@
+use std::time::Instant;
+
 use crossterm::event::{KeyCode, KeyModifiers, KeyEvent};
 
 use crate::app::App;
 use crate::mode::Mode;
+
+fn update_autocomplete(app: &mut App) {
+    app.last_keystroke = Some(Instant::now());
+    if app.autocomplete.is_visible() {
+        let text = app.editor.text();
+        let (row, col) = app.editor.cursor();
+        let prefix = crate::autocomplete::current_word_prefix(&text, row, col);
+        app.autocomplete.filter(&prefix);
+    }
+}
 
 pub fn handle_key(key: KeyEvent, app: &mut App) {
     match key.code {
@@ -22,8 +34,14 @@ pub fn handle_key(key: KeyEvent, app: &mut App) {
                 app.mode = Mode::QueryNormal;
             }
         }
-        KeyCode::Char(c) => app.editor.insert_char(c),
-        KeyCode::Backspace => app.editor.backspace(),
+        KeyCode::Char(c) => {
+            app.editor.insert_char(c);
+            update_autocomplete(app);
+        }
+        KeyCode::Backspace => {
+            app.editor.backspace();
+            update_autocomplete(app);
+        }
         KeyCode::Enter => app.editor.insert_newline(),
         KeyCode::Left => app.editor.cursor_left(),
         KeyCode::Right => app.editor.cursor_right(),

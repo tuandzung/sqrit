@@ -1,4 +1,5 @@
 use std::io;
+use std::time::Instant;
 
 use crossterm::event::{self, Event, KeyEventKind};
 use crossterm::terminal::{
@@ -56,6 +57,8 @@ pub struct App {
     pub explorer_state: ExplorerState,
     pub pending_space: bool,
     pub autocomplete: AutocompleteState,
+    pub last_keystroke: Option<Instant>,
+    pub pending_schema_load: bool,
     // Set by picker on connect. Not cleared on disconnect — connection persists
     // across query errors. Reset only when returning to picker or switching connections.
     pub active_connection: Option<String>,
@@ -82,8 +85,41 @@ impl App {
             explorer_state: ExplorerState::new(),
             pending_space: false,
             autocomplete: AutocompleteState::new(),
+            last_keystroke: None,
+            pending_schema_load: false,
             active_connection: None,
         })
+    }
+
+    /// Check if autocomplete should trigger after idle timeout (V7).
+    /// Call from event loop; also testable directly.
+    pub fn tick_autocomplete(&mut self) {
+        if self.mode != Mode::QueryInsert {
+            return;
+        }
+        if let Some(last) = self.last_keystroke {
+            if last.elapsed() >= std::time::Duration::from_millis(300) {
+                if !self.autocomplete.is_visible() {
+                    let text = self.editor.text();
+                    let (row, col) = self.editor.cursor();
+                    let prefix = crate::autocomplete::current_word_prefix(&text, row, col);
+                    let candidates = crate::autocomplete::suggest(
+                        &prefix,
+                        self.explorer_state.schema.as_ref(),
+                    );
+                    if !candidates.is_empty() {
+                        self.autocomplete.open(candidates);
+                    }
+                }
+                self.last_keystroke = None;
+            }
+        }
+    }
+
+    /// Process a single key event via the current mode handler.
+    pub fn handle_key_event(&mut self, key: crossterm::event::KeyEvent) {
+        let mode = self.mode;
+        mode.handle_key(key, self);
     }
 
     pub async fn execute_pending(&mut self) {
@@ -147,8 +183,20 @@ impl App {
                 }
             }
 
+            self.tick_autocomplete();
+
             if self.pending_query.is_some() {
                 self.execute_pending().await;
+            }
+
+            // Deferred schema load after connect (picker sets flag)
+            if self.pending_schema_load {
+                if let Some(ref db) = self.db {
+                    if let Ok(schema) = db.schema_info().await {
+                        self.explorer_state.schema = Some(schema);
+                    }
+                }
+                self.pending_schema_load = false;
             }
 
             if self.should_quit {

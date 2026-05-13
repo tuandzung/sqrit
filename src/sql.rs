@@ -20,6 +20,14 @@ pub struct Token {
     pub text: String,
 }
 
+pub fn keywords() -> &'static [&'static str] {
+    KEYWORDS
+}
+
+pub fn types() -> &'static [&'static str] {
+    SQL_TYPES
+}
+
 const KEYWORDS: &[&str] = &[
     "SELECT", "FROM", "WHERE", "INSERT", "INTO", "VALUES", "UPDATE", "SET",
     "DELETE", "CREATE", "DROP", "ALTER", "TABLE", "INDEX", "VIEW", "JOIN",

@@ -21,6 +21,8 @@ fn make_app() -> App {
         pending_space: false,
         autocomplete: sqrit::autocomplete::AutocompleteState::new(),
         active_connection: None,
+        last_keystroke: None,
+            pending_schema_load: false,
     }
 }
 

@@ -1,4 +1,5 @@
-use sqrit::autocomplete::AutocompleteState;
+use sqrit::autocomplete::{AutocompleteState, current_word_prefix, suggest};
+use sqrit::db::types::{SchemaInfo, TableInfo, ColumnInfo, ViewInfo};
 
 #[test]
 fn open_shows_popup_with_candidates_and_selects_first() {
@@ -98,4 +99,153 @@ fn filter_with_no_match_yields_empty() {
     state.open(vec!["SELECT".into()]);
     state.filter("xyz");
     assert!(state.filtered().is_empty());
+}
+
+// --- T19: Autocomplete engine ---
+
+#[test]
+fn current_word_prefix_extracts_partial_word_before_cursor() {
+    let text = "SEL";
+    assert_eq!(current_word_prefix(text, 0, 3), "SEL");
+}
+
+#[test]
+fn current_word_prefix_empty_at_line_start() {
+    let text = "SELECT * FROM";
+    assert_eq!(current_word_prefix(text, 0, 0), "");
+}
+
+#[test]
+fn current_word_prefix_extracts_mid_word() {
+    let text = "SELECT * FR";
+    assert_eq!(current_word_prefix(text, 0, 11), "FR");
+}
+
+#[test]
+fn current_word_prefix_after_space_is_empty() {
+    let text = "SELECT ";
+    assert_eq!(current_word_prefix(text, 0, 7), "");
+}
+
+#[test]
+fn current_word_prefix_with_underscore() {
+    let text = "user_ta";
+    assert_eq!(current_word_prefix(text, 0, 7), "user_ta");
+}
+
+#[test]
+fn current_word_prefix_empty_when_col_beyond_line() {
+    assert_eq!(current_word_prefix("SELECT", 0, 10), "");
+}
+
+#[test]
+fn current_word_prefix_empty_when_row_beyond_last_line() {
+    assert_eq!(current_word_prefix("SELECT\nFROM", 5, 0), "");
+}
+
+#[test]
+fn current_word_prefix_empty_after_dot() {
+    assert_eq!(current_word_prefix("schema.table", 0, 7), "");
+}
+
+#[test]
+fn current_word_prefix_empty_after_paren() {
+    assert_eq!(current_word_prefix("func(", 0, 5), "");
+}
+
+#[test]
+fn current_word_prefix_empty_after_comma() {
+    assert_eq!(current_word_prefix("a, b", 0, 2), "");
+}
+
+#[test]
+fn current_word_prefix_multiline_targets_second_line() {
+    assert_eq!(current_word_prefix("SELECT\ncol1\ncol2", 1, 3), "col");
+}
+
+#[test]
+fn suggest_returns_keywords_matching_prefix() {
+    let results = suggest("SEL", None);
+    assert!(results.contains(&"SELECT".to_string()));
+}
+
+#[test]
+fn suggest_keywords_case_insensitive() {
+    let results = suggest("sel", None);
+    assert!(results.contains(&"SELECT".to_string()));
+}
+
+#[test]
+fn suggest_no_match_returns_empty() {
+    let results = suggest("ZZZ", None);
+    assert!(results.is_empty());
+}
+
+#[test]
+fn suggest_empty_prefix_returns_nothing() {
+    let results = suggest("", None);
+    assert!(results.is_empty());
+}
+
+#[test]
+fn suggest_includes_table_names_from_schema() {
+    let schema = SchemaInfo {
+        tables: vec![
+            TableInfo { name: "users".into(), columns: vec![] },
+            TableInfo { name: "orders".into(), columns: vec![] },
+        ],
+        views: vec![],
+    };
+    let results = suggest("us", Some(&schema));
+    assert!(results.contains(&"users".to_string()));
+    assert!(!results.contains(&"orders".to_string()));
+}
+
+#[test]
+fn suggest_includes_view_names_from_schema() {
+    let schema = SchemaInfo {
+        tables: vec![],
+        views: vec![ViewInfo { name: "active_users".into(), columns: vec![] }],
+    };
+    let results = suggest("act", Some(&schema));
+    assert!(results.contains(&"active_users".to_string()));
+}
+
+#[test]
+fn suggest_includes_column_names_from_all_tables() {
+    let schema = SchemaInfo {
+        tables: vec![
+            TableInfo {
+                name: "users".into(),
+                columns: vec![
+                    ColumnInfo { name: "id".into(), data_type: "INTEGER".into(), nullable: false, is_primary_key: true },
+                    ColumnInfo { name: "email".into(), data_type: "TEXT".into(), nullable: false, is_primary_key: false },
+                ],
+            },
+            TableInfo {
+                name: "orders".into(),
+                columns: vec![
+                    ColumnInfo { name: "order_id".into(), data_type: "INTEGER".into(), nullable: false, is_primary_key: true },
+                ],
+            },
+        ],
+        views: vec![],
+    };
+    let results = suggest("em", Some(&schema));
+    assert!(results.contains(&"email".to_string()));
+}
+
+#[test]
+fn suggest_deduplicates_column_and_keyword() {
+    // "IN" is both a keyword and a column prefix — keyword appears once
+    let schema = SchemaInfo {
+        tables: vec![TableInfo {
+            name: "t".into(),
+            columns: vec![ColumnInfo { name: "insert_time".into(), data_type: "TEXT".into(), nullable: false, is_primary_key: false }],
+        }],
+        views: vec![],
+    };
+    let results = suggest("in", Some(&schema));
+    let count = results.iter().filter(|r| *r == "insert_time").count();
+    assert_eq!(count, 1);
 }
