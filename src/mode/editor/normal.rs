@@ -91,14 +91,8 @@ pub fn handle_key(key: KeyEvent, app: &mut App) {
         KeyCode::Char('u') => app.editor.undo(),
 
         // Pane focus
-        KeyCode::Char('e') => {
-            app.mode = Mode::Explorer;
-            app.focused_pane = crate::app::FocusedPane::Explorer;
-        }
-        KeyCode::Char('r') => {
-            app.mode = Mode::Results;
-            app.focused_pane = crate::app::FocusedPane::Results;
-        }
+        KeyCode::Char('e') => app.switch_pane(Mode::Explorer, crate::app::FocusedPane::Explorer),
+        KeyCode::Char('r') => app.switch_pane(Mode::Results, crate::app::FocusedPane::Results),
 
         // Space prefix
         KeyCode::Char(' ') => {

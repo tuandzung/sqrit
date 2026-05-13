@@ -6,18 +6,9 @@ use crate::mode::Mode;
 
 pub fn handle_key(key: KeyEvent, app: &mut App) {
     match key.code {
-        KeyCode::Char('q') => {
-            app.mode = Mode::QueryNormal;
-            app.focused_pane = crate::app::FocusedPane::Query;
-        }
-        KeyCode::Char('r') => {
-            app.mode = Mode::Results;
-            app.focused_pane = crate::app::FocusedPane::Results;
-        }
-        KeyCode::Char('e') => {
-            // Already in Explorer — just ensure focus
-            app.focused_pane = crate::app::FocusedPane::Explorer;
-        }
+        KeyCode::Char('q') => app.switch_pane(Mode::QueryNormal, crate::app::FocusedPane::Query),
+        KeyCode::Char('r') => app.switch_pane(Mode::Results, crate::app::FocusedPane::Results),
+        KeyCode::Char('e') => app.switch_pane(Mode::Explorer, crate::app::FocusedPane::Explorer),
         KeyCode::Char('j') | KeyCode::Down => app.explorer_state.move_down(),
         KeyCode::Char('k') | KeyCode::Up => app.explorer_state.move_up(),
         KeyCode::Char('s') => {
@@ -31,8 +22,7 @@ pub fn handle_key(key: KeyEvent, app: &mut App) {
                 };
                 if let Some(name) = name {
                     app.pending_query = Some(format!("SELECT * FROM {} LIMIT 100", name));
-                    app.mode = Mode::Results;
-                    app.focused_pane = crate::app::FocusedPane::Results;
+                    app.switch_pane(Mode::Results, crate::app::FocusedPane::Results);
                 }
             }
         }

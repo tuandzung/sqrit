@@ -400,6 +400,13 @@ impl App {
         frame.render_widget(Paragraph::new(status_text), status_area);
     }
 
+    /// Switch mode and focused_pane to the given pane. Single source of truth
+    /// for `e`/`q`/`r` pane-focus shortcuts.
+    pub fn switch_pane(&mut self, mode: Mode, pane: FocusedPane) {
+        self.mode = mode;
+        self.focused_pane = pane;
+    }
+
     pub fn border_style(&self, pane: FocusedPane) -> ratatui::style::Style {
         if self.focused_pane == pane {
             ratatui::style::Style::default().fg(ratatui::style::Color::Cyan)
