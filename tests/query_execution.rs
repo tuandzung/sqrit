@@ -39,6 +39,8 @@ fn make_connected_app() -> App {
             autocomplete: sqrit::autocomplete::AutocompleteState::new(),
             active_connection: None,
         results_state: sqrit::results::ResultsState::new(),
+        last_keystroke: None,
+            pending_schema_load: false,
     }
 }
 

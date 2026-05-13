@@ -1,3 +1,64 @@
+pub fn current_word_prefix(text: &str, row: usize, col: usize) -> String {
+    let line = match text.lines().nth(row) {
+        Some(l) => l,
+        None => return String::new(),
+    };
+    let chars: Vec<char> = line.chars().collect();
+    if col == 0 || col > chars.len() {
+        return String::new();
+    }
+    let mut start = col;
+    while start > 0 && (chars[start - 1].is_ascii_alphanumeric() || chars[start - 1] == '_') {
+        start -= 1;
+    }
+    chars[start..col].iter().collect()
+}
+
+pub fn suggest(prefix: &str, schema: Option<&crate::db::types::SchemaInfo>) -> Vec<String> {
+    if prefix.is_empty() {
+        return Vec::new();
+    }
+    let lower = prefix.to_lowercase();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut results: Vec<String> = Vec::new();
+
+    for kw in crate::sql::keywords() {
+        if kw.to_lowercase().starts_with(&lower) && seen.insert(kw.to_string()) {
+            results.push(kw.to_string());
+        }
+    }
+    for ty in crate::sql::types() {
+        if ty.to_lowercase().starts_with(&lower) && seen.insert(ty.to_string()) {
+            results.push(ty.to_string());
+        }
+    }
+
+    if let Some(schema) = schema {
+        for table in &schema.tables {
+            if table.name.to_lowercase().starts_with(&lower) && seen.insert(table.name.clone()) {
+                results.push(table.name.clone());
+            }
+            for col in &table.columns {
+                if col.name.to_lowercase().starts_with(&lower) && seen.insert(col.name.clone()) {
+                    results.push(col.name.clone());
+                }
+            }
+        }
+        for view in &schema.views {
+            if view.name.to_lowercase().starts_with(&lower) && seen.insert(view.name.clone()) {
+                results.push(view.name.clone());
+            }
+            for col in &view.columns {
+                if col.name.to_lowercase().starts_with(&lower) && seen.insert(col.name.clone()) {
+                    results.push(col.name.clone());
+                }
+            }
+        }
+    }
+
+    results
+}
+
 pub struct AutocompleteState {
     candidates: Vec<String>,
     filtered_indices: Vec<usize>,

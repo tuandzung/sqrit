@@ -55,7 +55,7 @@ T15|x|results copy/export: `yc` copy cell, `yy` copy row, `ya` copy all, export 
 T16|x|explorer tree: render schema tree (tables→columns, views→columns), expand/collapse with Enter|T8,T3
 T17|x|explorer actions: `s` runs `SELECT * FROM <table> LIMIT 100`, toggle explorer `<space>e`|T16,T12
 T18|x|autocomplete popup: render suggestion list below cursor position, `Tab` accept, `Esc` dismiss|T9
-T19|.|autocomplete engine: keyword list + table/column suggestions from current schema via `Database` trait|T18,T3,V7
+T19|x|autocomplete engine: keyword list + table/column suggestions from current schema via `Database` trait|T18,T3,V7
 T20|x|status bar: show mode, connection name, query status (idle/running/error), error messages|T8
 T21|.|maximize toggle: `<space>f` expands focused pane to full screen, toggle back|T8
 T22|.|pane focus: `e`/`q`/`r` keys switch focus to Explorer/Query/Results|T8
