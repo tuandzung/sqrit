@@ -124,6 +124,7 @@ fn make_copy_app() -> App {
         explorer_state: ExplorerState::new(),
         pending_space: false,
             autocomplete: sqrit::autocomplete::AutocompleteState::new(),
+            active_connection: None,
         results_state: ResultsState::new(),
     }
 }

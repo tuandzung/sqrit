@@ -30,6 +30,7 @@ pub fn handle_key(key: KeyEvent, app: &mut App) {
                     }
                 };
                 app.db = Some(db);
+                app.active_connection = Some(conn.name.clone());
                 app.mode = Mode::QueryNormal;
             }
         }

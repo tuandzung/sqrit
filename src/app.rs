@@ -56,6 +56,7 @@ pub struct App {
     pub explorer_state: ExplorerState,
     pub pending_space: bool,
     pub autocomplete: AutocompleteState,
+    pub active_connection: Option<String>,
 }
 
 impl App {
@@ -79,6 +80,7 @@ impl App {
             explorer_state: ExplorerState::new(),
             pending_space: false,
             autocomplete: AutocompleteState::new(),
+            active_connection: None,
         })
     }
 
@@ -344,20 +346,7 @@ impl App {
         }
 
         // Status bar
-        let conn_name = self
-            .config
-            .connections
-            .first()
-            .map(|c| c.name.as_str())
-            .unwrap_or("none");
-        let mode_str = match self.mode {
-            Mode::Explorer => "EXPLORER",
-            Mode::QueryNormal => "NORMAL",
-            Mode::QueryInsert => "INSERT",
-            Mode::Results => "RESULTS",
-            _ => "",
-        };
-        let status_text = format!(" {} | {} | {}", mode_str, conn_name, self.status_message);
+        let status_text = self.status_bar_text();
         frame.render_widget(Paragraph::new(status_text), status_area);
     }
 
@@ -367,6 +356,27 @@ impl App {
         } else {
             ratatui::style::Style::default()
         }
+    }
+
+    pub fn status_bar_text(&self) -> String {
+        let mode_str = match self.mode {
+            Mode::Picker => "PICKER",
+            Mode::Explorer => "EXPLORER",
+            Mode::QueryNormal => "NORMAL",
+            Mode::QueryInsert => "INSERT",
+            Mode::Results => "RESULTS",
+        };
+        let conn = self
+            .active_connection
+            .as_deref()
+            .unwrap_or("no connection");
+        let status = match &self.query_status {
+            QueryStatus::Idle => String::new(),
+            QueryStatus::Running => "running...".to_string(),
+            QueryStatus::Success => "ok".to_string(),
+            QueryStatus::Error(e) => format!("ERR: {}", e),
+        };
+        format!(" {} | {} | {}", mode_str, conn, status)
     }
 
     fn token_style(kind: &TokenKind) -> Style {
