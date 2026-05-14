@@ -34,6 +34,11 @@ pub enum AsyncResult {
         has_next_page: bool,
     },
     SchemaLoaded(SchemaInfo),
+    Connected {
+        db: Box<dyn Database>,
+        schema: Option<SchemaInfo>,
+    },
+    ConnectFailed(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -127,6 +132,15 @@ impl App {
                 }
                 AsyncResult::SchemaLoaded(schema) => {
                     self.explorer_state.schema = Some(schema);
+                }
+                AsyncResult::Connected { db, schema } => {
+                    self.db = Some(db);
+                    if let Some(s) = schema {
+                        self.explorer_state.schema = Some(s);
+                    }
+                }
+                AsyncResult::ConnectFailed(e) => {
+                    self.query_status = QueryStatus::Error(e);
                 }
             }
         }
@@ -268,16 +282,19 @@ impl App {
                 self.execute_pending();
             }
 
-            // Deferred schema load after connect (picker sets flag)
+            // Deferred connect + schema load after picker selection
             if self.pending_schema_load {
                 if let Some(ref db) = self.db {
-                    let db = db.clone_box();
+                    let mut db = db.clone_box();
                     let tx = self.async_tx.clone();
                     self.pending_schema_load = false;
                     tokio::spawn(async move {
-                        if let Ok(schema) = db.schema_info().await {
-                            let _ = tx.send(AsyncResult::SchemaLoaded(schema));
+                        if let Err(e) = db.connect().await {
+                            let _ = tx.send(AsyncResult::ConnectFailed(e.to_string()));
+                            return;
                         }
+                        let schema = db.schema_info().await.ok();
+                        let _ = tx.send(AsyncResult::Connected { db, schema });
                     });
                 }
             }
