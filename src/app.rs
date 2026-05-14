@@ -33,7 +33,6 @@ pub enum AsyncResult {
         result: Option<QueryResult>,
         has_next_page: bool,
     },
-    SchemaLoaded(SchemaInfo),
     Connected {
         db: Box<dyn Database>,
         schema: Option<SchemaInfo>,
@@ -129,9 +128,6 @@ impl App {
                     if let Some(r) = result {
                         self.results = Some(r);
                     }
-                }
-                AsyncResult::SchemaLoaded(schema) => {
-                    self.explorer_state.schema = Some(schema);
                 }
                 AsyncResult::Connected { db, schema } => {
                     self.db = Some(db);
