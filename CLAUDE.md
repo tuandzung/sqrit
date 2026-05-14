@@ -24,7 +24,7 @@ Three GitHub Actions workflows:
 | `integration.yml` | Push to main | full test suite with PG + MySQL via GitHub Services |
 | `release.yml` | Tag `v*` | extract changelog, cross-compile 4 targets, publish GitHub Release |
 
-**Release targets**: `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu` (via `cross` on ubuntu), `x86_64-apple-darwin`, `aarch64-apple-darwin` (native on macos).
+**Release targets**: `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu` (via `cross` on Ubuntu), `x86_64-apple-darwin`, `aarch64-apple-darwin` (native on macOS).
 
 **Integration test env vars**: `PG_HOST=localhost PG_PORT=5432 PG_USER=sqrit_test PG_PASS=sqrit_test PG_DB=sqrit_test` and equivalent `MYSQL_*`.
 
