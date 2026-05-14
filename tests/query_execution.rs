@@ -1,48 +1,10 @@
-use sqrit::app::{App, FocusedPane, QueryStatus};
-use sqrit::config::{Config, Connection, DbType};
-use sqrit::db::sqlite::SqliteAdapter;
-use sqrit::editor::EditorBuffer;
+mod common;
+
+use sqrit::app::{App, QueryStatus};
 use sqrit::mode::Mode;
-use sqrit::mode::editor::normal::NormalState;
-use sqrit::picker::PickerState;
-use sqrit::explorer::ExplorerState;
 
 fn make_connected_app() -> App {
-    let config = Config {
-        connections: vec![Connection {
-            name: "test".to_string(),
-            db_type: DbType::Sqlite,
-            host: None,
-            port: None,
-            username: None,
-            password: None,
-            database: None,
-            file_path: Some(":memory:".to_string()),
-        }],
-    };
-    App {
-        mode: Mode::QueryNormal,
-        config,
-        should_quit: false,
-        picker: PickerState::new(),
-        db: Some(Box::new(SqliteAdapter::new(":memory:"))),
-        focused_pane: FocusedPane::Query,
-        editor: EditorBuffer::new(),
-        normal_state: NormalState::new(),
-        status_message: String::new(),
-        results: None,
-        query_status: QueryStatus::Idle,
-        pending_query: None,
-        last_query: None,
-        explorer_state: ExplorerState::new(),
-        pending_space: false,
-            maximized: None,
-            autocomplete: sqrit::autocomplete::AutocompleteState::new(),
-            active_connection: None,
-        results_state: sqrit::results::ResultsState::new(),
-        last_keystroke: None,
-            pending_schema_load: false,
-    }
+    common::test_app()
 }
 
 // T12 #1: default state
@@ -115,7 +77,8 @@ async fn execute_stores_results() {
 
     app.editor.insert_str("SELECT 1 AS val");
     app.pending_query = Some(app.editor.text());
-    app.execute_pending().await;
+    app.execute_pending();
+    common::wait_for_query(&mut app, std::time::Duration::from_secs(5)).await;
 
     assert!(app.results.is_some());
     assert_eq!(app.query_status, QueryStatus::Success);
@@ -135,7 +98,8 @@ async fn execute_invalid_sql_stores_error() {
     }
 
     app.pending_query = Some("INVALID SQL !!@@".to_string());
-    app.execute_pending().await;
+    app.execute_pending();
+    common::wait_for_query(&mut app, std::time::Duration::from_secs(5)).await;
 
     assert!(app.results.is_none());
     assert!(matches!(app.query_status, QueryStatus::Error(_)));

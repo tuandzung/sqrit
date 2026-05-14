@@ -246,4 +246,11 @@ impl Database for MySqlAdapter {
             views: view_infos,
         })
     }
+
+    fn clone_box(&self) -> Box<dyn Database> {
+        Box::new(Self {
+            url: self.url.clone(),
+            pool: self.pool.clone(),
+        })
+    }
 }

@@ -1,12 +1,8 @@
+mod common;
+
 use sqrit::app::{App, FocusedPane, QueryStatus};
-use sqrit::config::{Config, Connection, DbType};
-use sqrit::db::sqlite::SqliteAdapter;
-use sqrit::editor::EditorBuffer;
 use sqrit::mode::Mode;
-use sqrit::mode::editor::normal::NormalState;
-use sqrit::picker::PickerState;
 use sqrit::results::ResultsState;
-use sqrit::explorer::ExplorerState;
 
 // T13 #1: default state
 #[test]
@@ -105,18 +101,11 @@ fn empty_results_noop() {
 }
 
 fn make_results_app(rows: usize) -> App {
-    let config = Config {
-        connections: vec![Connection {
-            name: "test".to_string(),
-            db_type: DbType::Sqlite,
-            host: None,
-            port: None,
-            username: None,
-            password: None,
-            database: None,
-            file_path: Some(":memory:".to_string()),
-        }],
-    };
+    let mut app = common::test_app();
+    app.mode = Mode::Results;
+    app.focused_pane = FocusedPane::Results;
+    app.query_status = QueryStatus::Success;
+
     let mut results = sqrit::db::types::QueryResult::empty();
     results.columns = vec!["a".to_string(), "b".to_string()];
     for i in 0..rows {
@@ -125,29 +114,8 @@ fn make_results_app(rows: usize) -> App {
         row.insert("b".to_string(), sqrit::db::types::Value::Text(format!("val{}", i)));
         results.rows.push(row);
     }
-    App {
-        mode: Mode::Results,
-        config,
-        should_quit: false,
-        picker: PickerState::new(),
-        db: Some(Box::new(SqliteAdapter::new(":memory:"))),
-        focused_pane: FocusedPane::Results,
-        editor: EditorBuffer::new(),
-        normal_state: NormalState::new(),
-        status_message: String::new(),
-        results: Some(results),
-        query_status: QueryStatus::Success,
-        pending_query: None,
-        last_query: None,
-        explorer_state: ExplorerState::new(),
-        pending_space: false,
-            maximized: None,
-            autocomplete: sqrit::autocomplete::AutocompleteState::new(),
-            active_connection: None,
-        results_state: ResultsState::new(),
-        last_keystroke: None,
-            pending_schema_load: false,
-    }
+    app.results = Some(results);
+    app
 }
 
 // T13 #6: results mode h/j/k/l dispatches to ResultsState

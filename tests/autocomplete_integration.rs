@@ -1,3 +1,5 @@
+mod common;
+
 use std::time::{Duration, Instant};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -6,29 +8,8 @@ use sqrit::app::App;
 use sqrit::mode::Mode;
 
 fn make_insert_app_with_editor() -> App {
-    let app = App {
-        mode: Mode::QueryInsert,
-        should_quit: false,
-        config: sqrit::config::Config { connections: vec![] },
-        picker: sqrit::picker::PickerState::new(),
-        db: None,
-        focused_pane: sqrit::app::FocusedPane::Query,
-        editor: sqrit::editor::EditorBuffer::new(),
-        normal_state: sqrit::mode::editor::normal::NormalState::new(),
-        status_message: String::new(),
-        results: None,
-        query_status: sqrit::app::QueryStatus::Idle,
-        pending_query: None,
-        results_state: sqrit::results::ResultsState::new(),
-        last_query: None,
-        explorer_state: sqrit::explorer::ExplorerState::new(),
-        pending_space: false,
-            maximized: None,
-        autocomplete: sqrit::autocomplete::AutocompleteState::new(),
-        last_keystroke: None,
-        pending_schema_load: false,
-        active_connection: None,
-    };
+    let mut app = common::test_app();
+    app.mode = Mode::QueryInsert;
     app
 }
 
