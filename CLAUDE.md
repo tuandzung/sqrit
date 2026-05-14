@@ -10,7 +10,25 @@ cargo run                      # run TUI
 cargo test                     # all tests (110+; PG/MySQL need servers)
 cargo test --test sqlite_adapter  # single test file
 cargo test connect_opens       # single test by name
+cargo clippy -- -D warnings    # lint
+cargo fmt --check              # format check
 ```
+
+## CI/CD
+
+Three GitHub Actions workflows:
+
+| Workflow | Trigger | What it does |
+|----------|---------|--------------|
+| `ci.yml` | PR to main | build, clippy (`-D warnings`), fmt check, SQLite tests |
+| `integration.yml` | Push to main | full test suite with PG + MySQL via GitHub Services |
+| `release.yml` | Tag `v*` | extract changelog, cross-compile 4 targets, publish GitHub Release |
+
+**Release targets**: `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu` (via `cross` on ubuntu), `x86_64-apple-darwin`, `aarch64-apple-darwin` (native on macos).
+
+**Integration test env vars**: `PG_HOST=localhost PG_PORT=5432 PG_USER=sqrit_test PG_PASS=sqrit_test PG_DB=sqrit_test` and equivalent `MYSQL_*`.
+
+**Release body**: extracted from CHANGELOG.md matching the tag version section.
 
 ## Architecture
 
