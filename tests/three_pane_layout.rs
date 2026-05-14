@@ -1,51 +1,10 @@
+mod common;
+
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use sqrit::app::{App, FocusedPane};
-use sqrit::config::{Config, Connection, DbType};
-use sqrit::editor::EditorBuffer;
-use sqrit::mode::Mode;
-use sqrit::mode::editor::normal::NormalState;
-use sqrit::explorer::ExplorerState;
-use sqrit::picker::PickerState;
 
 fn make_connected_app() -> App {
-    let config = Config {
-        connections: vec![Connection {
-            name: "test".to_string(),
-            db_type: DbType::Sqlite,
-            host: None,
-            port: None,
-            username: None,
-            password: None,
-            database: None,
-            file_path: Some("/tmp/test.db".to_string()),
-        }],
-    };
-    let (async_tx, async_rx) = tokio::sync::mpsc::unbounded_channel();
-    App {
-        mode: Mode::QueryNormal,
-        config,
-        should_quit: false,
-        picker: PickerState::new(),
-        db: None,
-        focused_pane: FocusedPane::Query,
-        editor: EditorBuffer::new(),
-        normal_state: NormalState::new(),
-        status_message: String::new(),
-        results: None,
-        query_status: sqrit::app::QueryStatus::Idle,
-        pending_query: None,
-        last_query: None,
-        explorer_state: ExplorerState::new(),
-        pending_space: false,
-            maximized: None,
-            autocomplete: sqrit::autocomplete::AutocompleteState::new(),
-            active_connection: None,
-        results_state: sqrit::results::ResultsState::new(),
-        last_keystroke: None,
-            pending_schema_load: false,
-        async_rx,
-        async_tx,
-    }
+    common::test_app()
 }
 
 // T8 #1: 3-pane layout splits into explorer + right side

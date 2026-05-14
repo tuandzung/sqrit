@@ -1,12 +1,9 @@
+mod common;
+
 use sqrit::app::{App, FocusedPane, QueryStatus};
-use sqrit::config::{Config, Connection, DbType};
 use sqrit::db::sqlite::SqliteAdapter;
-use sqrit::editor::EditorBuffer;
 use sqrit::mode::Mode;
-use sqrit::mode::editor::normal::NormalState;
-use sqrit::picker::PickerState;
 use sqrit::results::ResultsState;
-use sqrit::explorer::ExplorerState;
 
 // T14 #1: page_down advances offset by page_size, resets selection
 #[test]
@@ -71,44 +68,12 @@ fn reset_pagination_clears_state() {
 }
 
 fn make_paginated_app() -> App {
-    let config = Config {
-        connections: vec![Connection {
-            name: "test".to_string(),
-            db_type: DbType::Sqlite,
-            host: None,
-            port: None,
-            username: None,
-            password: None,
-            database: None,
-            file_path: Some(":memory:".to_string()),
-        }],
-    };
-    let (async_tx, async_rx) = tokio::sync::mpsc::unbounded_channel();
-    App {
-        mode: Mode::Results,
-        config,
-        should_quit: false,
-        picker: PickerState::new(),
-        db: Some(Box::new(SqliteAdapter::new(":memory:"))),
-        focused_pane: FocusedPane::Results,
-        editor: EditorBuffer::new(),
-        normal_state: NormalState::new(),
-        status_message: String::new(),
-        results: Some(sqrit::db::types::QueryResult::empty()),
-        query_status: QueryStatus::Success,
-        pending_query: None,
-        last_query: None,
-        explorer_state: ExplorerState::new(),
-        pending_space: false,
-            maximized: None,
-            autocomplete: sqrit::autocomplete::AutocompleteState::new(),
-            active_connection: None,
-        results_state: ResultsState::new(),
-        last_keystroke: None,
-            pending_schema_load: false,
-        async_rx,
-        async_tx,
-    }
+    let mut app = common::test_app();
+    app.mode = Mode::Results;
+    app.focused_pane = FocusedPane::Results;
+    app.query_status = QueryStatus::Success;
+    app.results = Some(sqrit::db::types::QueryResult::empty());
+    app
 }
 
 // T14 #5: PgDn in results mode advances page and sets pending query
@@ -167,8 +132,7 @@ async fn execute_pending_paginates_select() {
     app.results_state.reset_pagination();
 
     app.execute_pending();
-    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-    app.drain_async_results();
+    common::wait_for_query(&mut app, std::time::Duration::from_secs(5)).await;
 
     assert_eq!(app.last_query, Some("SELECT * FROM t".to_string()));
     let result = app.results.as_ref().unwrap();
@@ -179,8 +143,7 @@ async fn execute_pending_paginates_select() {
     app.results_state.page_down();
     app.pending_query = app.last_query.clone();
     app.execute_pending();
-    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-    app.drain_async_results();
+    common::wait_for_query(&mut app, std::time::Duration::from_secs(5)).await;
 
     let result = app.results.as_ref().unwrap();
     assert_eq!(result.rows.len(), 1); // remaining row

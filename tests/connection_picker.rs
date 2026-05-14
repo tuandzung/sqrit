@@ -1,10 +1,8 @@
-use sqrit::app::{App, FocusedPane};
+mod common;
+
+use sqrit::app::App;
 use sqrit::config::{Config, Connection, DbType};
-use sqrit::editor::EditorBuffer;
 use sqrit::mode::Mode;
-use sqrit::mode::editor::normal::NormalState;
-use sqrit::picker::PickerState;
-use sqrit::explorer::ExplorerState;
 
 fn make_config(names: &[&str]) -> Config {
     let connections = names
@@ -25,32 +23,10 @@ fn make_config(names: &[&str]) -> Config {
 }
 
 fn make_app(names: &[&str]) -> App {
-    let (async_tx, async_rx) = tokio::sync::mpsc::unbounded_channel();
-    App {
-        mode: Mode::Picker,
-        config: make_config(names),
-        should_quit: false,
-        picker: PickerState::new(),
-        db: None,
-        focused_pane: FocusedPane::Query,
-        editor: EditorBuffer::new(),
-        normal_state: NormalState::new(),
-        status_message: String::new(),
-        results: None,
-        query_status: sqrit::app::QueryStatus::Idle,
-        pending_query: None,
-        last_query: None,
-        explorer_state: ExplorerState::new(),
-        pending_space: false,
-            maximized: None,
-            autocomplete: sqrit::autocomplete::AutocompleteState::new(),
-            active_connection: None,
-        results_state: sqrit::results::ResultsState::new(),
-        last_keystroke: None,
-            pending_schema_load: false,
-        async_rx,
-        async_tx,
-    }
+    let mut app = common::test_app();
+    app.mode = Mode::Picker;
+    app.config = make_config(names);
+    app
 }
 
 // #1 empty config shows no connections

@@ -1,33 +1,10 @@
-use sqrit::app::{App, FocusedPane, QueryStatus};
+mod common;
+
+use sqrit::app::{App, QueryStatus};
 use sqrit::mode::Mode;
 
 fn make_app() -> App {
-    let (async_tx, async_rx) = tokio::sync::mpsc::unbounded_channel();
-    App {
-        mode: Mode::QueryNormal,
-        config: sqrit::config::Config::default(),
-        should_quit: false,
-        picker: sqrit::picker::PickerState::new(),
-        db: None,
-        focused_pane: FocusedPane::Query,
-        editor: sqrit::editor::EditorBuffer::new(),
-        normal_state: sqrit::mode::editor::normal::NormalState::new(),
-        status_message: String::new(),
-        results: None,
-        query_status: QueryStatus::Idle,
-        pending_query: None,
-        results_state: sqrit::results::ResultsState::new(),
-        last_query: None,
-        explorer_state: sqrit::explorer::ExplorerState::new(),
-        pending_space: false,
-            maximized: None,
-        autocomplete: sqrit::autocomplete::AutocompleteState::new(),
-        active_connection: None,
-        last_keystroke: None,
-            pending_schema_load: false,
-        async_rx,
-        async_tx,
-    }
+    common::test_app()
 }
 
 #[test]

@@ -64,4 +64,4 @@ T23|x|integration tests: test each adapter with real DB (SQLite file, PG/MySQL i
 ## §B — Bug Log
 
 id|date|cause|fix
-B1|2026-05-14|execute_pending().await blocks UI thread during query|V2: spawn tokio task, return results via mpsc channel
+B1|2026-05-14|execute_pending().await blocks UI thread during query|V2: spawn tokio task, mpsc channel, query_id prevents pagination races

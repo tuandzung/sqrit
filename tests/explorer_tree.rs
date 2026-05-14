@@ -1,13 +1,9 @@
-use sqrit::app::{App, FocusedPane, QueryStatus};
-use sqrit::config::{Config, Connection, DbType};
-use sqrit::db::sqlite::SqliteAdapter;
-use sqrit::db::types::{ColumnInfo, SchemaInfo, TableInfo, ViewInfo};
-use sqrit::editor::EditorBuffer;
+mod common;
+
+use sqrit::app::{App, FocusedPane};
+use sqrit::db::types::{ColumnInfo, SchemaInfo, TableInfo};
 use sqrit::explorer::{ExplorerState, TreeItem};
 use sqrit::mode::Mode;
-use sqrit::mode::editor::normal::NormalState;
-use sqrit::picker::PickerState;
-use sqrit::results::ResultsState;
 
 fn make_schema() -> SchemaInfo {
     SchemaInfo {
@@ -89,46 +85,11 @@ fn move_down_up_navigates() {
 }
 
 fn make_explorer_app() -> App {
-    let config = Config {
-        connections: vec![Connection {
-            name: "test".to_string(),
-            db_type: DbType::Sqlite,
-            host: None,
-            port: None,
-            username: None,
-            password: None,
-            database: None,
-            file_path: Some(":memory:".to_string()),
-        }],
-    };
-    let mut explorer_state = ExplorerState::new();
-    explorer_state.schema = Some(make_schema());
-    let (async_tx, async_rx) = tokio::sync::mpsc::unbounded_channel();
-    App {
-        mode: Mode::Explorer,
-        config,
-        should_quit: false,
-        picker: PickerState::new(),
-        db: Some(Box::new(SqliteAdapter::new(":memory:"))),
-        focused_pane: FocusedPane::Explorer,
-        editor: EditorBuffer::new(),
-        normal_state: NormalState::new(),
-        status_message: String::new(),
-        results: None,
-        query_status: QueryStatus::Idle,
-        pending_query: None,
-        last_query: None,
-        results_state: ResultsState::new(),
-        explorer_state,
-        pending_space: false,
-            maximized: None,
-            autocomplete: sqrit::autocomplete::AutocompleteState::new(),
-            active_connection: None,
-        last_keystroke: None,
-            pending_schema_load: false,
-        async_rx,
-        async_tx,
-    }
+    let mut app = common::test_app();
+    app.mode = Mode::Explorer;
+    app.focused_pane = FocusedPane::Explorer;
+    app.explorer_state.schema = Some(make_schema());
+    app
 }
 
 // T16 #5: Enter toggles expand on selected table

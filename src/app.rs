@@ -28,6 +28,7 @@ use crate::picker::PickerState;
 
 pub enum AsyncResult {
     QueryDone {
+        query_id: u64,
         status: QueryStatus,
         result: Option<QueryResult>,
         has_next_page: bool,
@@ -76,6 +77,7 @@ pub struct App {
     pub active_connection: Option<String>,
     pub async_rx: mpsc::UnboundedReceiver<AsyncResult>,
     pub async_tx: mpsc::UnboundedSender<AsyncResult>,
+    pub query_id: u64,
 }
 
 impl App {
@@ -106,16 +108,20 @@ impl App {
             active_connection: None,
             async_rx,
             async_tx,
+            query_id: 0,
         })
     }
 
     pub fn drain_async_results(&mut self) {
         while let Ok(msg) = self.async_rx.try_recv() {
             match msg {
-                AsyncResult::QueryDone { status, result, has_next_page } => {
+                AsyncResult::QueryDone { query_id, status, result, has_next_page } => {
+                    if query_id != self.query_id {
+                        continue;
+                    }
                     self.query_status = status;
+                    self.results_state.has_next_page = has_next_page;
                     if let Some(r) = result {
-                        self.results_state.has_next_page = has_next_page;
                         self.results = Some(r);
                     }
                 }
@@ -183,6 +189,8 @@ impl App {
             None => return,
         };
 
+        self.query_id += 1;
+        let query_id = self.query_id;
         self.query_status = QueryStatus::Running;
         self.last_query = Some(query.clone());
 
@@ -215,12 +223,14 @@ impl App {
                             false
                         };
                         AsyncResult::QueryDone {
+                            query_id,
                             status: QueryStatus::Success,
                             result: Some(r),
                             has_next_page,
                         }
                     }
                     Err(e) => AsyncResult::QueryDone {
+                        query_id,
                         status: QueryStatus::Error(e.to_string()),
                         result: None,
                         has_next_page: false,

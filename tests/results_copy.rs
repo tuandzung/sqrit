@@ -1,13 +1,8 @@
+mod common;
+
 use sqrit::clipboard::{format_cell, format_row, format_all, format_csv, format_json};
 use sqrit::app::{App, FocusedPane, QueryStatus};
-use sqrit::config::{Config, Connection, DbType};
-use sqrit::db::sqlite::SqliteAdapter;
-use sqrit::editor::EditorBuffer;
 use sqrit::mode::Mode;
-use sqrit::mode::editor::normal::NormalState;
-use sqrit::picker::PickerState;
-use sqrit::results::ResultsState;
-use sqrit::explorer::ExplorerState;
 use sqrit::db::types::{QueryResult, Value};
 
 fn make_result() -> QueryResult {
@@ -94,45 +89,12 @@ fn format_json_returns_json() {
 }
 
 fn make_copy_app() -> App {
-    let config = Config {
-        connections: vec![Connection {
-            name: "test".to_string(),
-            db_type: DbType::Sqlite,
-            host: None,
-            port: None,
-            username: None,
-            password: None,
-            database: None,
-            file_path: Some(":memory:".to_string()),
-        }],
-    };
-    let mut results = make_result();
-    let (async_tx, async_rx) = tokio::sync::mpsc::unbounded_channel();
-    App {
-        mode: Mode::Results,
-        config,
-        should_quit: false,
-        picker: PickerState::new(),
-        db: Some(Box::new(SqliteAdapter::new(":memory:"))),
-        focused_pane: FocusedPane::Results,
-        editor: EditorBuffer::new(),
-        normal_state: NormalState::new(),
-        status_message: String::new(),
-        results: Some(results),
-        query_status: QueryStatus::Success,
-        pending_query: None,
-        last_query: None,
-        explorer_state: ExplorerState::new(),
-        pending_space: false,
-            maximized: None,
-            autocomplete: sqrit::autocomplete::AutocompleteState::new(),
-            active_connection: None,
-        results_state: ResultsState::new(),
-        last_keystroke: None,
-            pending_schema_load: false,
-        async_rx,
-        async_tx,
-    }
+    let mut app = common::test_app();
+    app.mode = Mode::Results;
+    app.focused_pane = FocusedPane::Results;
+    app.query_status = QueryStatus::Success;
+    app.results = Some(make_result());
+    app
 }
 
 fn press(app: &mut App, code: crossterm::event::KeyCode) {

@@ -1,51 +1,9 @@
-use sqrit::app::{App, FocusedPane, QueryStatus};
-use sqrit::config::{Config, Connection, DbType};
-use sqrit::db::sqlite::SqliteAdapter;
-use sqrit::editor::EditorBuffer;
-use sqrit::mode::Mode;
-use sqrit::mode::editor::normal::NormalState;
-use sqrit::picker::PickerState;
-use sqrit::explorer::ExplorerState;
+mod common;
+
+use sqrit::app::{App, QueryStatus};
 
 fn make_connected_app() -> App {
-    let config = Config {
-        connections: vec![Connection {
-            name: "test".to_string(),
-            db_type: DbType::Sqlite,
-            host: None,
-            port: None,
-            username: None,
-            password: None,
-            database: None,
-            file_path: Some(":memory:".to_string()),
-        }],
-    };
-    let (async_tx, async_rx) = tokio::sync::mpsc::unbounded_channel();
-    App {
-        mode: Mode::QueryNormal,
-        config,
-        should_quit: false,
-        picker: PickerState::new(),
-        db: Some(Box::new(SqliteAdapter::new(":memory:"))),
-        focused_pane: FocusedPane::Query,
-        editor: EditorBuffer::new(),
-        normal_state: NormalState::new(),
-        status_message: String::new(),
-        results: None,
-        query_status: QueryStatus::Idle,
-        pending_query: None,
-        last_query: None,
-        explorer_state: ExplorerState::new(),
-        pending_space: false,
-        maximized: None,
-        autocomplete: sqrit::autocomplete::AutocompleteState::new(),
-        active_connection: None,
-        results_state: sqrit::results::ResultsState::new(),
-        last_keystroke: None,
-        pending_schema_load: false,
-        async_rx,
-        async_tx,
-    }
+    common::test_app()
 }
 
 // V2: execute_pending must not block — spawns task, returns immediately
@@ -67,8 +25,7 @@ async fn execute_pending_returns_immediately() {
     assert!(app.results.is_none());
 
     // Yield to let the spawned task complete
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    app.drain_async_results();
+    common::wait_for_query(&mut app, std::time::Duration::from_secs(5)).await;
 
     assert_eq!(app.query_status, QueryStatus::Success);
     assert!(app.results.is_some());
@@ -91,8 +48,7 @@ async fn execute_pending_error_via_channel() {
     assert_eq!(app.query_status, QueryStatus::Running);
     assert!(app.results.is_none());
 
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    app.drain_async_results();
+    common::wait_for_query(&mut app, std::time::Duration::from_secs(5)).await;
 
     assert!(matches!(app.query_status, QueryStatus::Error(_)));
     assert!(app.results.is_none());
@@ -130,4 +86,31 @@ async fn schema_load_via_async_task() {
     assert!(app.explorer_state.schema.is_some());
     let schema = app.explorer_state.schema.unwrap();
     assert!(schema.tables.iter().any(|t| t.name == "test_v2"));
+}
+
+// V2: schema load failure leaves explorer_state unchanged
+#[tokio::test]
+async fn schema_load_failure_is_silent() {
+    let mut app = make_connected_app();
+    // Don't connect — schema_info() will fail with "not connected"
+    app.pending_schema_load = true;
+
+    if app.pending_schema_load {
+        if let Some(ref db) = app.db {
+            let db = db.clone_box();
+            let tx = app.async_tx.clone();
+            app.pending_schema_load = false;
+            tokio::spawn(async move {
+                if let Ok(schema) = db.schema_info().await {
+                    let _ = tx.send(sqrit::app::AsyncResult::SchemaLoaded(schema));
+                }
+                // On error, nothing is sent — explorer_state stays None
+            });
+        }
+    }
+
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    app.drain_async_results();
+
+    assert!(app.explorer_state.schema.is_none());
 }
