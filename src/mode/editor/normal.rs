@@ -3,6 +3,7 @@ use crossterm::event::{KeyCode, KeyEvent};
 use crate::app::App;
 use crate::mode::Mode;
 
+#[derive(Default)]
 pub struct NormalState {
     pub pending_g: bool,
     pub yank_register: Option<String>,
@@ -10,10 +11,7 @@ pub struct NormalState {
 
 impl NormalState {
     pub fn new() -> Self {
-        Self {
-            pending_g: false,
-            yank_register: None,
-        }
+        Self::default()
     }
 }
 

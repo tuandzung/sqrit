@@ -10,6 +10,7 @@ pub enum TreeItem {
     ViewColumn { view: String, name: String, data_type: String },
 }
 
+#[derive(Default)]
 pub struct ExplorerState {
     pub schema: Option<SchemaInfo>,
     pub expanded: HashSet<String>,
@@ -18,11 +19,7 @@ pub struct ExplorerState {
 
 impl ExplorerState {
     pub fn new() -> Self {
-        Self {
-            schema: None,
-            expanded: HashSet::new(),
-            selected: 0,
-        }
+        Self::default()
     }
 
     pub fn items(&self) -> Vec<TreeItem> {

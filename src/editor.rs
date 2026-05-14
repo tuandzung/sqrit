@@ -13,14 +13,20 @@ pub struct EditorBuffer {
     undo_stack: Vec<Snapshot>,
 }
 
-impl EditorBuffer {
-    pub fn new() -> Self {
+impl Default for EditorBuffer {
+    fn default() -> Self {
         Self {
             lines: vec![String::new()],
             cursor_row: 0,
             cursor_col: 0,
             undo_stack: Vec::new(),
         }
+    }
+}
+
+impl EditorBuffer {
+    pub fn new() -> Self {
+        Self::default()
     }
 
     pub fn text(&self) -> String {

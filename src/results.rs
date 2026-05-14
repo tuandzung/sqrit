@@ -9,8 +9,8 @@ pub struct ResultsState {
     pub pending_yank: bool,
 }
 
-impl ResultsState {
-    pub fn new() -> Self {
+impl Default for ResultsState {
+    fn default() -> Self {
         Self {
             selected_row: 0,
             selected_col: 0,
@@ -21,6 +21,12 @@ impl ResultsState {
             has_next_page: false,
             pending_yank: false,
         }
+    }
+}
+
+impl ResultsState {
+    pub fn new() -> Self {
+        Self::default()
     }
 
     pub fn page_down(&mut self) {

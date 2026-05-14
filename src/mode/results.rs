@@ -52,6 +52,7 @@ pub fn handle_key(key: KeyEvent, app: &mut App) {
             app.results_state.pending_yank = true;
         }
         KeyCode::PageDown => {
+            #[allow(clippy::collapsible_match)]
             if app.results_state.has_next_page {
                 app.results_state.page_down();
                 if let Some(ref q) = app.last_query {
@@ -60,6 +61,7 @@ pub fn handle_key(key: KeyEvent, app: &mut App) {
             }
         }
         KeyCode::PageUp => {
+            #[allow(clippy::collapsible_match)]
             if app.results_state.page_offset > 0 {
                 app.results_state.page_up();
                 if let Some(ref q) = app.last_query {

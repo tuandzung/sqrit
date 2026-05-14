@@ -63,6 +63,7 @@ fn add_schema_items<'a>(
     }
 }
 
+#[derive(Default)]
 pub struct AutocompleteState {
     candidates: Vec<String>,
     filtered_indices: Vec<usize>,
@@ -72,12 +73,7 @@ pub struct AutocompleteState {
 
 impl AutocompleteState {
     pub fn new() -> Self {
-        Self {
-            candidates: Vec::new(),
-            filtered_indices: Vec::new(),
-            selected: 0,
-            visible: false,
-        }
+        Self::default()
     }
 
     pub fn open(&mut self, candidates: Vec<String>) {

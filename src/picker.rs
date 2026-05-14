@@ -1,5 +1,6 @@
 use crate::app::App;
 
+#[derive(Default)]
 pub struct PickerState {
     pub selected: usize,
     pub filter: String,
@@ -7,10 +8,7 @@ pub struct PickerState {
 
 impl PickerState {
     pub fn new() -> Self {
-        Self {
-            selected: 0,
-            filter: String::new(),
-        }
+        Self::default()
     }
 
     pub fn filtered_indices(&self, app: &App) -> Vec<usize> {

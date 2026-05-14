@@ -46,13 +46,11 @@ impl Database for SqliteAdapter {
                 .iter()
                 .map(|s| s.to_string())
                 .collect();
-            let column_count = column_names.len();
-
             let mut result_rows = vec![];
             let mut rows = stmt.query([])?;
             while let Some(row) = rows.next()? {
                 let mut map = std::collections::HashMap::new();
-                for i in 0..column_count {
+                for (i, name) in column_names.iter().enumerate() {
                     let val: Value = match row.get_ref(i)? {
                         rusqlite::types::ValueRef::Null => Value::Null,
                         rusqlite::types::ValueRef::Integer(i) => Value::Integer(i),
@@ -62,7 +60,7 @@ impl Database for SqliteAdapter {
                         }
                         rusqlite::types::ValueRef::Blob(b) => Value::Blob(b.to_vec()),
                     };
-                    map.insert(column_names[i].clone(), val);
+                    map.insert(name.clone(), val);
                 }
                 result_rows.push(map);
             }

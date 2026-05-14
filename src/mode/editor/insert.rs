@@ -21,6 +21,7 @@ pub fn handle_key(key: KeyEvent, app: &mut App) {
             app.pending_query = Some(app.editor.text());
         }
         KeyCode::Tab => {
+            #[allow(clippy::collapsible_match)]
             if app.autocomplete.is_visible() {
                 if let Some(word) = app.autocomplete.accept() {
                     app.editor.insert_str(&word);
