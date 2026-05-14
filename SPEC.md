@@ -1,4 +1,4 @@
-# SPEC.md — sqrit v0.1
+# SPEC.md — sqrit v0.2
 
 ## §G — Goal
 
@@ -33,6 +33,7 @@ SQL TUI client in Rust. Connect, query, browse. Three backends: SQLite, PostgreS
 - V5: Connection config is loaded on startup and saved on mutation. No in-memory-only connections in baseline.
 - V6: Results pagination: never load entire result set into memory. Fetch page-size chunks from backend cursor or use `LIMIT/OFFSET`.
 - V7: Autocomplete popup dismisses on `Esc`, accepts on `Tab`, triggers only after configurable idle timeout (default 300ms).
+- V8: Query editor in INSERT mode always renders a visible cursor. No invisible cursor state.
 
 ## §T — Tasks
 
@@ -60,6 +61,9 @@ T20|x|status bar: show mode, connection name, query status (idle/running/error),
 T21|x|maximize toggle: `<space>f` expands focused pane to full screen, toggle back|T8
 T22|x|pane focus: `e`/`q`/`r` keys switch focus to Explorer/Query/Results|T8
 T23|x|integration tests: test each adapter with real DB (SQLite file, PG/MySQL in Docker)|T3,T4,T5
+T24|.|INSERT mode cursor: render visible cursor via `frame.set_cursor()` in `render_query()`, handle scroll offset if text exceeds viewport|T9,V8
+T25|.|Explorer scroll: add `scroll_offset` to `ExplorerState`, viewport-aware rendering via `.skip().take()`, auto-adjust on selection change (mirror `ResultsState::adjust_scroll` pattern)|T16
+T26|.|Autocomplete word replace: on Tab accept, delete current word prefix before inserting suggestion. Reuse `current_word_prefix()` length. Add `delete_backwards(n)` to `EditorBuffer`|T19,V7
 
 ## §B — Bug Log
 
