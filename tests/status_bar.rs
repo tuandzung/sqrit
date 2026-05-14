@@ -2,6 +2,7 @@ use sqrit::app::{App, FocusedPane, QueryStatus};
 use sqrit::mode::Mode;
 
 fn make_app() -> App {
+    let (async_tx, async_rx) = tokio::sync::mpsc::unbounded_channel();
     App {
         mode: Mode::QueryNormal,
         config: sqrit::config::Config::default(),
@@ -24,6 +25,8 @@ fn make_app() -> App {
         active_connection: None,
         last_keystroke: None,
             pending_schema_load: false,
+        async_rx,
+        async_tx,
     }
 }
 

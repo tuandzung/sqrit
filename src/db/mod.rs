@@ -22,4 +22,6 @@ pub trait Database: Send + Sync {
     async fn list_views(&self) -> anyhow::Result<Vec<String>>;
     async fn list_columns(&self, table: &str) -> anyhow::Result<Vec<ColumnInfo>>;
     async fn schema_info(&self) -> anyhow::Result<SchemaInfo>;
+
+    fn clone_box(&self) -> Box<dyn Database>;
 }

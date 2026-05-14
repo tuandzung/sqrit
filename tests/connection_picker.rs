@@ -25,6 +25,7 @@ fn make_config(names: &[&str]) -> Config {
 }
 
 fn make_app(names: &[&str]) -> App {
+    let (async_tx, async_rx) = tokio::sync::mpsc::unbounded_channel();
     App {
         mode: Mode::Picker,
         config: make_config(names),
@@ -47,6 +48,8 @@ fn make_app(names: &[&str]) -> App {
         results_state: sqrit::results::ResultsState::new(),
         last_keystroke: None,
             pending_schema_load: false,
+        async_rx,
+        async_tx,
     }
 }
 

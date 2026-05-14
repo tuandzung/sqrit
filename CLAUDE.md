@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 cargo build                    # build
 cargo run                      # run TUI
-cargo test                     # all tests (63)
+cargo test                     # all tests (110+; PG/MySQL need servers)
 cargo test --test sqlite_adapter  # single test file
 cargo test connect_opens       # single test by name
 ```
@@ -18,11 +18,11 @@ cargo test connect_opens       # single test by name
 
 **Three core layers**, all owned by a single `App` struct (V3: no Arc<Mutex<>> for UI state):
 
-1. **Database** (`src/db/`) — `Database` trait in `mod.rs`, adapters per backend. All DB ops go through this trait (V1). SQLite adapter done (`sqlite.rs`), PostgreSQL and MySQL pending. Sync rusqlite calls wrapped in `tokio::task::spawn_blocking`.
+1. **Database** (`src/db/`) — `Database` trait in `mod.rs`, adapters per backend. All DB ops go through this trait (V1). SQLite, PostgreSQL, MySQL adapters done. Sync rusqlite calls wrapped in `tokio::task::spawn_blocking`.
 
 2. **Modes** (`src/mode.rs` + `src/mode/`) — `Mode` enum dispatches `handle_key()` to mode-specific handlers. Every mode implements `handle_key()` (V4). Never match keys in the main loop. Modes: Picker, Explorer, QueryNormal, QueryInsert, Results.
 
-3. **Event loop** (`src/app.rs`) — crossterm raw mode + alternate screen. Polls at 100ms, dispatches key events to active mode. After dispatch, drains `pending_query` via `execute_pending()` (V2, known drift: B1).
+3. **Event loop** (`src/app.rs`) — crossterm raw mode + alternate screen. Polls at 100ms, dispatches key events to active mode. DB calls dispatched via `tokio::spawn`, results returned through `mpsc` channel (V2). Schema loads also async. `drain_async_results()` processes results each tick.
 
 **Connection config** (`src/config/mod.rs`) — TOML at `~/.sqrit/connections.toml`. Loaded on startup, saved on mutation (V5).
 
@@ -37,7 +37,7 @@ cargo test connect_opens       # single test by name
 ## Invariants (from SPEC.md §V)
 
 - V1: No direct sqlx/rusqlite outside adapter impls
-- V2: DB calls never block UI thread (B1: currently drifts — `execute_pending` awaits inline)
+- V2: DB calls never block UI thread (fixed: spawn tokio task, mpsc channel)
 - V3: Single App struct, no shared mutable UI state
 - V4: Modes handle keys, main loop dispatches only
 - V5: Connections persisted to disk
@@ -46,7 +46,7 @@ cargo test connect_opens       # single test by name
 
 ## Bug Log
 
-- B1: `execute_pending().await` blocks event loop during query. Fix: spawn tokio task + oneshot channel.
+- B1 (fixed): `execute_pending().await` blocked event loop. Fixed: spawn tokio task + mpsc channel.
 
 ## Domain Glossary
 

@@ -175,4 +175,11 @@ impl Database for SqliteAdapter {
             views: view_infos,
         })
     }
+
+    fn clone_box(&self) -> Box<dyn Database> {
+        Box::new(Self {
+            path: self.path.clone(),
+            conn: self.conn.clone(),
+        })
+    }
 }

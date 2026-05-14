@@ -103,6 +103,7 @@ fn make_explorer_app() -> App {
     };
     let mut explorer_state = ExplorerState::new();
     explorer_state.schema = Some(make_schema());
+    let (async_tx, async_rx) = tokio::sync::mpsc::unbounded_channel();
     App {
         mode: Mode::Explorer,
         config,
@@ -125,6 +126,8 @@ fn make_explorer_app() -> App {
             active_connection: None,
         last_keystroke: None,
             pending_schema_load: false,
+        async_rx,
+        async_tx,
     }
 }
 

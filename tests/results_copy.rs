@@ -107,6 +107,7 @@ fn make_copy_app() -> App {
         }],
     };
     let mut results = make_result();
+    let (async_tx, async_rx) = tokio::sync::mpsc::unbounded_channel();
     App {
         mode: Mode::Results,
         config,
@@ -129,6 +130,8 @@ fn make_copy_app() -> App {
         results_state: ResultsState::new(),
         last_keystroke: None,
             pending_schema_load: false,
+        async_rx,
+        async_tx,
     }
 }
 

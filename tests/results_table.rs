@@ -125,6 +125,7 @@ fn make_results_app(rows: usize) -> App {
         row.insert("b".to_string(), sqrit::db::types::Value::Text(format!("val{}", i)));
         results.rows.push(row);
     }
+    let (async_tx, async_rx) = tokio::sync::mpsc::unbounded_channel();
     App {
         mode: Mode::Results,
         config,
@@ -147,6 +148,8 @@ fn make_results_app(rows: usize) -> App {
         results_state: ResultsState::new(),
         last_keystroke: None,
             pending_schema_load: false,
+        async_rx,
+        async_tx,
     }
 }
 

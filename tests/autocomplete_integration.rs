@@ -6,6 +6,7 @@ use sqrit::app::App;
 use sqrit::mode::Mode;
 
 fn make_insert_app_with_editor() -> App {
+    let (async_tx, async_rx) = tokio::sync::mpsc::unbounded_channel();
     let app = App {
         mode: Mode::QueryInsert,
         should_quit: false,
@@ -28,6 +29,8 @@ fn make_insert_app_with_editor() -> App {
         last_keystroke: None,
         pending_schema_load: false,
         active_connection: None,
+        async_rx,
+        async_tx,
     };
     app
 }

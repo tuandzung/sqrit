@@ -11,6 +11,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Table, Row as TableRow, Cell};
 use ratatui::Terminal;
+use tokio::sync::mpsc;
 
 use crate::sql::{TokenKind, tokenize};
 use crate::results::ResultsState;
@@ -19,10 +20,20 @@ use crate::explorer::ExplorerState;
 use crate::autocomplete::AutocompleteState;
 use crate::config::Config;
 use crate::db::Database;
+use crate::db::types::{QueryResult, SchemaInfo};
 use crate::editor::EditorBuffer;
 use crate::mode::Mode;
 use crate::mode::editor::normal::NormalState;
 use crate::picker::PickerState;
+
+pub enum AsyncResult {
+    QueryDone {
+        status: QueryStatus,
+        result: Option<QueryResult>,
+        has_next_page: bool,
+    },
+    SchemaLoaded(SchemaInfo),
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum FocusedPane {
@@ -63,11 +74,14 @@ pub struct App {
     // Set by picker on connect. Not cleared on disconnect — connection persists
     // across query errors. Reset only when returning to picker or switching connections.
     pub active_connection: Option<String>,
+    pub async_rx: mpsc::UnboundedReceiver<AsyncResult>,
+    pub async_tx: mpsc::UnboundedSender<AsyncResult>,
 }
 
 impl App {
     pub fn new() -> anyhow::Result<Self> {
         let config = Config::load()?;
+        let (async_tx, async_rx) = mpsc::unbounded_channel();
         Ok(Self {
             mode: Mode::Picker,
             should_quit: false,
@@ -90,7 +104,26 @@ impl App {
             last_keystroke: None,
             pending_schema_load: false,
             active_connection: None,
+            async_rx,
+            async_tx,
         })
+    }
+
+    pub fn drain_async_results(&mut self) {
+        while let Ok(msg) = self.async_rx.try_recv() {
+            match msg {
+                AsyncResult::QueryDone { status, result, has_next_page } => {
+                    self.query_status = status;
+                    if let Some(r) = result {
+                        self.results_state.has_next_page = has_next_page;
+                        self.results = Some(r);
+                    }
+                }
+                AsyncResult::SchemaLoaded(schema) => {
+                    self.explorer_state.schema = Some(schema);
+                }
+            }
+        }
     }
 
     /// Check if autocomplete should trigger after idle timeout (V7).
@@ -144,7 +177,7 @@ impl App {
         }
     }
 
-    pub async fn execute_pending(&mut self) {
+    pub fn execute_pending(&mut self) {
         let query = match self.pending_query.take() {
             Some(q) => q,
             None => return,
@@ -156,31 +189,45 @@ impl App {
         let is_select = query.trim_start().to_uppercase().starts_with("SELECT");
 
         if let Some(ref db) = self.db {
-            let result = if is_select {
-                let offset = self.results_state.page_offset as u64;
-                let limit = self.results_state.page_size as u64 + 1;
-                db.execute_paginated(&query, offset, limit).await
-            } else {
-                db.execute(&query).await
-            };
+            let db: Box<dyn Database> = db.clone_box();
+            let offset = self.results_state.page_offset as u64;
+            let limit = self.results_state.page_size as u64 + 1;
+            let page_size = self.results_state.page_size;
+            let tx = self.async_tx.clone();
 
-            match result {
-                Ok(mut r) => {
-                    if is_select {
-                        if r.rows.len() > self.results_state.page_size {
-                            self.results_state.has_next_page = true;
-                            r.rows.truncate(self.results_state.page_size);
+            tokio::spawn(async move {
+                let result = if is_select {
+                    db.execute_paginated(&query, offset, limit).await
+                } else {
+                    db.execute(&query).await
+                };
+
+                let msg = match result {
+                    Ok(mut r) => {
+                        let has_next_page = if is_select {
+                            if r.rows.len() > page_size {
+                                r.rows.truncate(page_size);
+                                true
+                            } else {
+                                false
+                            }
                         } else {
-                            self.results_state.has_next_page = false;
+                            false
+                        };
+                        AsyncResult::QueryDone {
+                            status: QueryStatus::Success,
+                            result: Some(r),
+                            has_next_page,
                         }
                     }
-                    self.results = Some(r);
-                    self.query_status = QueryStatus::Success;
-                }
-                Err(e) => {
-                    self.query_status = QueryStatus::Error(e.to_string());
-                }
-            }
+                    Err(e) => AsyncResult::QueryDone {
+                        status: QueryStatus::Error(e.to_string()),
+                        result: None,
+                        has_next_page: false,
+                    },
+                };
+                let _ = tx.send(msg);
+            });
         } else {
             self.query_status = QueryStatus::Error("No database connection".to_string());
         }
@@ -208,18 +255,25 @@ impl App {
             self.tick_autocomplete();
 
             if self.pending_query.is_some() {
-                self.execute_pending().await;
+                self.execute_pending();
             }
 
             // Deferred schema load after connect (picker sets flag)
             if self.pending_schema_load {
                 if let Some(ref db) = self.db {
-                    if let Ok(schema) = db.schema_info().await {
-                        self.explorer_state.schema = Some(schema);
-                    }
+                    let db = db.clone_box();
+                    let tx = self.async_tx.clone();
+                    self.pending_schema_load = false;
+                    tokio::spawn(async move {
+                        if let Ok(schema) = db.schema_info().await {
+                            let _ = tx.send(AsyncResult::SchemaLoaded(schema));
+                        }
+                    });
                 }
-                self.pending_schema_load = false;
             }
+
+            // Drain async results (non-blocking)
+            self.drain_async_results();
 
             if self.should_quit {
                 break;

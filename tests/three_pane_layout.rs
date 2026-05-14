@@ -20,6 +20,7 @@ fn make_connected_app() -> App {
             file_path: Some("/tmp/test.db".to_string()),
         }],
     };
+    let (async_tx, async_rx) = tokio::sync::mpsc::unbounded_channel();
     App {
         mode: Mode::QueryNormal,
         config,
@@ -42,6 +43,8 @@ fn make_connected_app() -> App {
         results_state: sqrit::results::ResultsState::new(),
         last_keystroke: None,
             pending_schema_load: false,
+        async_rx,
+        async_tx,
     }
 }
 

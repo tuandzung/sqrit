@@ -20,6 +20,7 @@ fn make_connected_app() -> App {
             file_path: Some(":memory:".to_string()),
         }],
     };
+    let (async_tx, async_rx) = tokio::sync::mpsc::unbounded_channel();
     App {
         mode: Mode::QueryNormal,
         config,
@@ -42,6 +43,8 @@ fn make_connected_app() -> App {
         results_state: sqrit::results::ResultsState::new(),
         last_keystroke: None,
             pending_schema_load: false,
+        async_rx,
+        async_tx,
     }
 }
 
@@ -115,7 +118,9 @@ async fn execute_stores_results() {
 
     app.editor.insert_str("SELECT 1 AS val");
     app.pending_query = Some(app.editor.text());
-    app.execute_pending().await;
+    app.execute_pending();
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+    app.drain_async_results();
 
     assert!(app.results.is_some());
     assert_eq!(app.query_status, QueryStatus::Success);
@@ -135,7 +140,9 @@ async fn execute_invalid_sql_stores_error() {
     }
 
     app.pending_query = Some("INVALID SQL !!@@".to_string());
-    app.execute_pending().await;
+    app.execute_pending();
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+    app.drain_async_results();
 
     assert!(app.results.is_none());
     assert!(matches!(app.query_status, QueryStatus::Error(_)));

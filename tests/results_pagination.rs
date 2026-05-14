@@ -83,6 +83,7 @@ fn make_paginated_app() -> App {
             file_path: Some(":memory:".to_string()),
         }],
     };
+    let (async_tx, async_rx) = tokio::sync::mpsc::unbounded_channel();
     App {
         mode: Mode::Results,
         config,
@@ -105,6 +106,8 @@ fn make_paginated_app() -> App {
         results_state: ResultsState::new(),
         last_keystroke: None,
             pending_schema_load: false,
+        async_rx,
+        async_tx,
     }
 }
 
@@ -163,7 +166,9 @@ async fn execute_pending_paginates_select() {
     app.pending_query = Some("SELECT * FROM t".to_string());
     app.results_state.reset_pagination();
 
-    app.execute_pending().await;
+    app.execute_pending();
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+    app.drain_async_results();
 
     assert_eq!(app.last_query, Some("SELECT * FROM t".to_string()));
     let result = app.results.as_ref().unwrap();
@@ -173,7 +178,9 @@ async fn execute_pending_paginates_select() {
     // Page down
     app.results_state.page_down();
     app.pending_query = app.last_query.clone();
-    app.execute_pending().await;
+    app.execute_pending();
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+    app.drain_async_results();
 
     let result = app.results.as_ref().unwrap();
     assert_eq!(result.rows.len(), 1); // remaining row
