@@ -132,7 +132,9 @@ impl EditorBuffer {
 
     pub fn insert_newline(&mut self) {
         self.save_undo();
-        let rest: String = self.lines[self.cursor_row].drain(self.cursor_col..).collect();
+        let rest: String = self.lines[self.cursor_row]
+            .drain(self.cursor_col..)
+            .collect();
         self.lines.insert(self.cursor_row + 1, rest);
         self.cursor_row += 1;
         self.cursor_col = 0;

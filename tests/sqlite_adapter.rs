@@ -1,6 +1,6 @@
-use sqrit::db::Database;
 use sqrit::db::sqlite::SqliteAdapter;
 use sqrit::db::types::Value;
+use sqrit::db::Database;
 
 async fn setup() -> (SqliteAdapter, tempfile::NamedTempFile) {
     let file = tempfile::NamedTempFile::new().unwrap();
@@ -74,9 +74,15 @@ async fn execute_select_returns_columns_and_rows() {
 
     assert_eq!(result.columns, vec!["id", "name", "active"]);
     assert_eq!(result.rows.len(), 2);
-    assert_eq!(result.rows[0].get("name").unwrap(), &Value::Text("alice".into()));
+    assert_eq!(
+        result.rows[0].get("name").unwrap(),
+        &Value::Text("alice".into())
+    );
     assert_eq!(result.rows[0].get("active").unwrap(), &Value::Integer(1));
-    assert_eq!(result.rows[1].get("name").unwrap(), &Value::Text("bob".into()));
+    assert_eq!(
+        result.rows[1].get("name").unwrap(),
+        &Value::Text("bob".into())
+    );
     assert_eq!(result.rows[1].get("active").unwrap(), &Value::Integer(0));
 }
 
@@ -116,7 +122,10 @@ async fn execute_paginated_respects_offset_and_limit() {
     let (adapter, _file) = setup_with_table().await;
     for i in 0..5 {
         adapter
-            .execute(&format!("INSERT INTO users (name, active) VALUES ('user{}', true)", i))
+            .execute(&format!(
+                "INSERT INTO users (name, active) VALUES ('user{}', true)",
+                i
+            ))
             .await
             .unwrap();
     }

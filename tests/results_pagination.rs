@@ -122,10 +122,30 @@ async fn execute_pending_paginates_select() {
     app.db.as_mut().unwrap().connect().await.unwrap();
 
     // Create table with 3 rows
-    app.db.as_ref().unwrap().execute("CREATE TABLE t (a INTEGER)").await.unwrap();
-    app.db.as_ref().unwrap().execute("INSERT INTO t VALUES (1)").await.unwrap();
-    app.db.as_ref().unwrap().execute("INSERT INTO t VALUES (2)").await.unwrap();
-    app.db.as_ref().unwrap().execute("INSERT INTO t VALUES (3)").await.unwrap();
+    app.db
+        .as_ref()
+        .unwrap()
+        .execute("CREATE TABLE t (a INTEGER)")
+        .await
+        .unwrap();
+    app.db
+        .as_ref()
+        .unwrap()
+        .execute("INSERT INTO t VALUES (1)")
+        .await
+        .unwrap();
+    app.db
+        .as_ref()
+        .unwrap()
+        .execute("INSERT INTO t VALUES (2)")
+        .await
+        .unwrap();
+    app.db
+        .as_ref()
+        .unwrap()
+        .execute("INSERT INTO t VALUES (3)")
+        .await
+        .unwrap();
 
     app.results_state.page_size = 2;
     app.pending_query = Some("SELECT * FROM t".to_string());

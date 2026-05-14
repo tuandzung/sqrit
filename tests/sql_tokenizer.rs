@@ -1,4 +1,4 @@
-use sqrit::sql::{TokenKind, tokenize};
+use sqrit::sql::{tokenize, TokenKind};
 
 fn kinds(tokens: &[sqrit::sql::Token]) -> Vec<TokenKind> {
     tokens.iter().map(|t| t.kind.clone()).collect()
@@ -19,10 +19,10 @@ fn full_query_tokenized() {
     let tokens = tokenize("SELECT * FROM users");
     assert!(tokens.len() >= 7);
     let kinds = kinds(&tokens);
-    assert!(kinds.contains(&TokenKind::Keyword));     // SELECT, FROM
+    assert!(kinds.contains(&TokenKind::Keyword)); // SELECT, FROM
     assert!(kinds.contains(&TokenKind::Punctuation)); // *
     assert!(kinds.contains(&TokenKind::Whitespace));
-    assert!(kinds.contains(&TokenKind::Identifier));  // users
+    assert!(kinds.contains(&TokenKind::Identifier)); // users
 }
 
 // T11 #3: string literal tokenized
@@ -92,11 +92,11 @@ fn multiline_mixed_query() {
     let tokens = tokenize(sql);
     let kinds = kinds(&tokens);
 
-    assert!(kinds.contains(&TokenKind::Keyword));     // SELECT, FROM, WHERE, LIMIT
-    assert!(kinds.contains(&TokenKind::Identifier));  // id, name, users, age
-    assert!(kinds.contains(&TokenKind::Operator));    // >
-    assert!(kinds.contains(&TokenKind::Comment));     // -- filter adults
-    assert!(kinds.contains(&TokenKind::Number));      // 21, 10
+    assert!(kinds.contains(&TokenKind::Keyword)); // SELECT, FROM, WHERE, LIMIT
+    assert!(kinds.contains(&TokenKind::Identifier)); // id, name, users, age
+    assert!(kinds.contains(&TokenKind::Operator)); // >
+    assert!(kinds.contains(&TokenKind::Comment)); // -- filter adults
+    assert!(kinds.contains(&TokenKind::Number)); // 21, 10
     assert!(kinds.contains(&TokenKind::Punctuation)); // ,
     assert!(kinds.contains(&TokenKind::Whitespace));
 

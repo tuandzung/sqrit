@@ -9,21 +9,21 @@ use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Clear, Paragraph, Table, Row as TableRow, Cell};
+use ratatui::widgets::{Block, Borders, Cell, Clear, Paragraph, Row as TableRow, Table};
 use ratatui::Terminal;
 use tokio::sync::mpsc;
 
-use crate::sql::{TokenKind, tokenize};
-use crate::results::ResultsState;
 use crate::explorer::ExplorerState;
+use crate::results::ResultsState;
+use crate::sql::{tokenize, TokenKind};
 
 use crate::autocomplete::AutocompleteState;
 use crate::config::Config;
-use crate::db::Database;
 use crate::db::types::{QueryResult, SchemaInfo};
+use crate::db::Database;
 use crate::editor::EditorBuffer;
-use crate::mode::Mode;
 use crate::mode::editor::normal::NormalState;
+use crate::mode::Mode;
 use crate::picker::PickerState;
 
 pub enum AsyncResult {
@@ -119,7 +119,12 @@ impl App {
     pub fn drain_async_results(&mut self) {
         while let Ok(msg) = self.async_rx.try_recv() {
             match msg {
-                AsyncResult::QueryDone { query_id, status, result, has_next_page } => {
+                AsyncResult::QueryDone {
+                    query_id,
+                    status,
+                    result,
+                    has_next_page,
+                } => {
                     if query_id != self.query_id {
                         continue;
                     }
@@ -154,10 +159,8 @@ impl App {
                     let text = self.editor.text();
                     let (row, col) = self.editor.cursor();
                     let prefix = crate::autocomplete::current_word_prefix(&text, row, col);
-                    let candidates = crate::autocomplete::suggest(
-                        &prefix,
-                        self.explorer_state.schema.as_ref(),
-                    );
+                    let candidates =
+                        crate::autocomplete::suggest(&prefix, self.explorer_state.schema.as_ref());
                     if !candidates.is_empty() {
                         self.autocomplete.open(candidates);
                     }
@@ -386,14 +389,18 @@ impl App {
                         let arrow = if *expanded { 'v' } else { '>' };
                         format!("{} {}", arrow, name)
                     }
-                    crate::explorer::TreeItem::Column { name, data_type, .. } => {
+                    crate::explorer::TreeItem::Column {
+                        name, data_type, ..
+                    } => {
                         format!("  {} ({})", name, data_type)
                     }
                     crate::explorer::TreeItem::View { name, expanded } => {
                         let arrow = if *expanded { 'v' } else { '>' };
                         format!("{} {}", arrow, name)
                     }
-                    crate::explorer::TreeItem::ViewColumn { name, data_type, .. } => {
+                    crate::explorer::TreeItem::ViewColumn {
+                        name, data_type, ..
+                    } => {
                         format!("  {} ({})", name, data_type)
                     }
                 };
@@ -478,24 +485,31 @@ impl App {
 
         if let Some(ref result) = self.results {
             if !result.columns.is_empty() {
-                let header_cells: Vec<Cell> = result.columns.iter()
+                let header_cells: Vec<Cell> = result
+                    .columns
+                    .iter()
                     .map(|c| Cell::from(c.as_str()).style(Style::default().fg(Color::Cyan)))
                     .collect();
                 let header = TableRow::new(header_cells)
                     .style(Style::default().add_modifier(Modifier::BOLD));
 
-                let rows: Vec<TableRow> = result.rows.iter()
+                let rows: Vec<TableRow> = result
+                    .rows
+                    .iter()
                     .skip(self.results_state.scroll_row)
                     .take(self.results_state.visible_rows)
                     .enumerate()
                     .map(|(i, row)| {
-                        let cells: Vec<Cell> = result.columns.iter()
+                        let cells: Vec<Cell> = result
+                            .columns
+                            .iter()
                             .map(|col| {
                                 let val = row.get(col).map(|v| v.to_string()).unwrap_or_default();
                                 Cell::from(val)
                             })
                             .collect();
-                        let is_selected_row = i + self.results_state.scroll_row == self.results_state.selected_row;
+                        let is_selected_row =
+                            i + self.results_state.scroll_row == self.results_state.selected_row;
                         let style = if is_selected_row {
                             Style::default().bg(Color::DarkGray)
                         } else {
@@ -505,12 +519,13 @@ impl App {
                     })
                     .collect();
 
-                let widths: Vec<ratatui::layout::Constraint> = result.columns.iter()
+                let widths: Vec<ratatui::layout::Constraint> = result
+                    .columns
+                    .iter()
                     .map(|_| ratatui::layout::Constraint::Ratio(1, result.columns.len() as u32))
                     .collect();
 
-                let table = Table::new(rows, &widths)
-                    .header(header);
+                let table = Table::new(rows, &widths).header(header);
                 frame.render_widget(table, inner);
             }
         }
@@ -537,10 +552,7 @@ impl App {
 
     pub fn status_bar_text(&self) -> String {
         let mode_str = self.mode.label();
-        let conn = self
-            .active_connection
-            .as_deref()
-            .unwrap_or("no connection");
+        let conn = self.active_connection.as_deref().unwrap_or("no connection");
 
         let query_status: &str = match &self.query_status {
             QueryStatus::Idle => "",
@@ -564,7 +576,9 @@ impl App {
 
     fn token_style(kind: &TokenKind) -> Style {
         match kind {
-            TokenKind::Keyword => Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD),
+            TokenKind::Keyword => Style::default()
+                .fg(Color::Blue)
+                .add_modifier(Modifier::BOLD),
             TokenKind::Type => Style::default().fg(Color::Magenta),
             TokenKind::String => Style::default().fg(Color::Green),
             TokenKind::Comment => Style::default().fg(Color::DarkGray),
@@ -633,11 +647,7 @@ impl App {
         };
 
         let list = ratatui::widgets::List::new(items)
-            .block(
-                Block::default()
-                    .title(title)
-                    .borders(Borders::ALL),
-            )
+            .block(Block::default().title(title).borders(Borders::ALL))
             .highlight_style(
                 ratatui::style::Style::default()
                     .bg(ratatui::style::Color::DarkGray)

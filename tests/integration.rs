@@ -37,7 +37,11 @@ async fn pg_db() -> Option<Box<dyn Database>> {
     let url = std::env::var("DATABASE_URL")
         .unwrap_or_else(|_| "postgres://sqrit:sqrit@localhost:15432/sqrit_test".to_string());
     let mut adapter = PgAdapter::new(&url);
-    adapter.connect().await.ok().map(|_| Box::new(adapter) as Box<dyn Database>)
+    adapter
+        .connect()
+        .await
+        .ok()
+        .map(|_| Box::new(adapter) as Box<dyn Database>)
 }
 
 async fn mysql_db() -> Option<Box<dyn Database>> {
@@ -47,10 +51,18 @@ async fn mysql_db() -> Option<Box<dyn Database>> {
     let url = std::env::var("MYSQL_URL")
         .unwrap_or_else(|_| "mysql://sqrit:sqrit@localhost:13306/sqrit_test".to_string());
     let mut adapter = MySqlAdapter::new(&url);
-    adapter.connect().await.ok().map(|_| Box::new(adapter) as Box<dyn Database>)
+    adapter
+        .connect()
+        .await
+        .ok()
+        .map(|_| Box::new(adapter) as Box<dyn Database>)
 }
 
-enum Backend { Sqlite, Postgres, Mysql }
+enum Backend {
+    Sqlite,
+    Postgres,
+    Mysql,
+}
 
 fn quote_ident(label: &Backend, name: &str) -> String {
     match label {
@@ -108,20 +120,32 @@ async fn all_adapters_create_insert_select_drop() {
 
         db.execute(&format!(
             "CREATE TABLE {} ({} , {})",
-            t, id_col(&backend), text_col(&backend, "name", false)
-        )).await.unwrap();
+            t,
+            id_col(&backend),
+            text_col(&backend, "name", false)
+        ))
+        .await
+        .unwrap();
 
         db.execute(&format!("INSERT INTO {} (name) VALUES ('alice')", t))
-            .await.unwrap();
-        let ins = db.execute(&format!("INSERT INTO {} (name) VALUES ('bob')", t))
-            .await.unwrap();
+            .await
+            .unwrap();
+        let ins = db
+            .execute(&format!("INSERT INTO {} (name) VALUES ('bob')", t))
+            .await
+            .unwrap();
         assert_eq!(ins.rows_affected, Some(1));
 
-        let sel = db.execute(&format!("SELECT id, name FROM {} ORDER BY id", t))
-            .await.unwrap();
+        let sel = db
+            .execute(&format!("SELECT id, name FROM {} ORDER BY id", t))
+            .await
+            .unwrap();
         assert_eq!(sel.rows.len(), 2);
         assert_eq!(sel.columns, vec!["id", "name"]);
-        assert_eq!(sel.rows[0].get("name").unwrap(), &Value::Text("alice".into()));
+        assert_eq!(
+            sel.rows[0].get("name").unwrap(),
+            &Value::Text("alice".into())
+        );
 
         db.execute(&format!("DROP TABLE {}", t)).await.unwrap();
     })
@@ -136,12 +160,17 @@ async fn all_adapters_paginate() {
 
         db.execute(&format!(
             "CREATE TABLE {} ({} , {})",
-            t, id_col(&backend), text_col(&backend, "val", true)
-        )).await.unwrap();
+            t,
+            id_col(&backend),
+            text_col(&backend, "val", true)
+        ))
+        .await
+        .unwrap();
 
         for i in 0..5 {
             db.execute(&format!("INSERT INTO {} (val) VALUES ('v{}')", t, i))
-                .await.unwrap();
+                .await
+                .unwrap();
         }
 
         let base_query = format!("SELECT * FROM {} ORDER BY id", t);
@@ -167,8 +196,12 @@ async fn all_adapters_list_tables_and_columns() {
 
         db.execute(&format!(
             "CREATE TABLE {} ({} , {})",
-            t, id_col(&backend), text_col(&backend, "name", false)
-        )).await.unwrap();
+            t,
+            id_col(&backend),
+            text_col(&backend, "name", false)
+        ))
+        .await
+        .unwrap();
 
         let tables = db.list_tables().await.unwrap();
         assert!(tables.contains(&table));
@@ -193,8 +226,12 @@ async fn all_adapters_schema_info() {
 
         db.execute(&format!(
             "CREATE TABLE {} ({} , {})",
-            t, id_col(&backend), text_col(&backend, "v", true)
-        )).await.unwrap();
+            t,
+            id_col(&backend),
+            text_col(&backend, "v", true)
+        ))
+        .await
+        .unwrap();
 
         let info = db.schema_info().await.unwrap();
         assert!(info.tables.iter().any(|t| t.name == table));

@@ -60,10 +60,7 @@ fn is_query_returning_rows(sql: &str) -> bool {
         .unwrap_or("")
         .to_uppercase();
 
-    matches!(
-        first_word.as_str(),
-        "SELECT" | "WITH" | "VALUES" | "TABLE"
-    )
+    matches!(first_word.as_str(), "SELECT" | "WITH" | "VALUES" | "TABLE")
 }
 
 pub struct MySqlAdapter {
@@ -170,10 +167,12 @@ impl Database for MySqlAdapter {
         Ok(result
             .rows
             .iter()
-            .filter_map(|r| r.get("TABLE_NAME").and_then(|v| match v {
-                Value::Text(s) => Some(s.clone()),
-                _ => None,
-            }))
+            .filter_map(|r| {
+                r.get("TABLE_NAME").and_then(|v| match v {
+                    Value::Text(s) => Some(s.clone()),
+                    _ => None,
+                })
+            })
             .collect())
     }
 
@@ -189,15 +188,20 @@ impl Database for MySqlAdapter {
         Ok(result
             .rows
             .iter()
-            .filter_map(|r| r.get("TABLE_NAME").and_then(|v| match v {
-                Value::Text(s) => Some(s.clone()),
-                _ => None,
-            }))
+            .filter_map(|r| {
+                r.get("TABLE_NAME").and_then(|v| match v {
+                    Value::Text(s) => Some(s.clone()),
+                    _ => None,
+                })
+            })
             .collect())
     }
 
     async fn list_columns(&self, table: &str) -> anyhow::Result<Vec<ColumnInfo>> {
-        let pool = self.pool.as_ref().ok_or_else(|| anyhow::anyhow!("not connected"))?;
+        let pool = self
+            .pool
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("not connected"))?;
         let rows = sqlx::query_as::<_, (String, String, String, String)>(
             "SELECT CAST(COLUMN_NAME AS CHAR) AS COLUMN_NAME, \
              CAST(COLUMN_TYPE AS CHAR) AS COLUMN_TYPE, \

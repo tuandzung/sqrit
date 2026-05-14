@@ -44,7 +44,11 @@ pub fn format_csv(result: &QueryResult) -> String {
             result
                 .columns
                 .iter()
-                .map(|c| r.get(c).map(|v| csv_escape(&v.to_string())).unwrap_or_default())
+                .map(|c| {
+                    r.get(c)
+                        .map(|v| csv_escape(&v.to_string()))
+                        .unwrap_or_default()
+                })
                 .collect::<Vec<_>>()
                 .join(",")
         })

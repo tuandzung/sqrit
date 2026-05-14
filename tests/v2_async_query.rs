@@ -87,7 +87,9 @@ async fn connect_and_schema_load_via_async_task() {
     {
         let mut db = sqrit::db::sqlite::SqliteAdapter::new(&path);
         db.connect().await.unwrap();
-        db.execute("CREATE TABLE test_v2 (id INTEGER PRIMARY KEY, name TEXT)").await.unwrap();
+        db.execute("CREATE TABLE test_v2 (id INTEGER PRIMARY KEY, name TEXT)")
+            .await
+            .unwrap();
     }
 
     // Replace with fresh unconnected adapter pointing at same file (simulates picker)
@@ -115,7 +117,9 @@ async fn connect_and_schema_load_via_async_task() {
 async fn connect_failure_shows_error() {
     let mut app = make_connected_app();
     // Use invalid path that can't connect
-    app.db = Some(Box::new(sqrit::db::sqlite::SqliteAdapter::new("/nonexistent/dir/db.sqlite")));
+    app.db = Some(Box::new(sqrit::db::sqlite::SqliteAdapter::new(
+        "/nonexistent/dir/db.sqlite",
+    )));
     app.pending_schema_load = true;
 
     spawn_connect_and_schema(&mut app);
@@ -149,7 +153,12 @@ impl sqrit::db::Database for SchemaFailAdapter {
             total_count: None,
         })
     }
-    async fn execute_paginated(&self, query: &str, _offset: u64, _limit: u64) -> anyhow::Result<sqrit::db::types::QueryResult> {
+    async fn execute_paginated(
+        &self,
+        query: &str,
+        _offset: u64,
+        _limit: u64,
+    ) -> anyhow::Result<sqrit::db::types::QueryResult> {
         self.execute(query).await
     }
     async fn list_tables(&self) -> anyhow::Result<Vec<String>> {
@@ -158,7 +167,10 @@ impl sqrit::db::Database for SchemaFailAdapter {
     async fn list_views(&self) -> anyhow::Result<Vec<String>> {
         Ok(vec![])
     }
-    async fn list_columns(&self, _table: &str) -> anyhow::Result<Vec<sqrit::db::types::ColumnInfo>> {
+    async fn list_columns(
+        &self,
+        _table: &str,
+    ) -> anyhow::Result<Vec<sqrit::db::types::ColumnInfo>> {
         Ok(vec![])
     }
     async fn schema_info(&self) -> anyhow::Result<sqrit::db::types::SchemaInfo> {

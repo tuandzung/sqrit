@@ -2,10 +2,10 @@ use sqrit::app::{App, FocusedPane, QueryStatus};
 use sqrit::config::{Config, Connection, DbType};
 use sqrit::db::sqlite::SqliteAdapter;
 use sqrit::editor::EditorBuffer;
-use sqrit::mode::Mode;
-use sqrit::mode::editor::normal::NormalState;
-use sqrit::picker::PickerState;
 use sqrit::explorer::ExplorerState;
+use sqrit::mode::editor::normal::NormalState;
+use sqrit::mode::Mode;
+use sqrit::picker::PickerState;
 
 pub fn test_app() -> App {
     let config = Config {
@@ -69,7 +69,8 @@ pub async fn wait_for_connect(app: &mut App, timeout: std::time::Duration) {
     let start = std::time::Instant::now();
     loop {
         app.drain_async_results();
-        if app.explorer_state.schema.is_some() || matches!(app.query_status, QueryStatus::Error(_)) {
+        if app.explorer_state.schema.is_some() || matches!(app.query_status, QueryStatus::Error(_))
+        {
             return;
         }
         if start.elapsed() >= timeout {

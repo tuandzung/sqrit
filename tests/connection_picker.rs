@@ -82,7 +82,8 @@ fn picker_filter_by_name() {
     let filtered = app.picker.filtered_indices(&app);
     assert_eq!(filtered, vec![2]); // only "prod-db"
 
-    app.picker.backspace(app.picker.filtered_indices(&app).len());
+    app.picker
+        .backspace(app.picker.filtered_indices(&app).len());
     let filtered = app.picker.filtered_indices(&app);
     assert_eq!(filtered.len(), 3); // back to all
 }

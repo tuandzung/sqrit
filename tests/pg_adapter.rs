@@ -3,9 +3,8 @@ use sqrit::db::types::Value;
 use sqrit::db::Database;
 
 fn db_url() -> String {
-    std::env::var("DATABASE_URL").unwrap_or_else(|_| {
-        "postgres://sqrit:sqrit@localhost:15432/sqrit_test".to_string()
-    })
+    std::env::var("DATABASE_URL")
+        .unwrap_or_else(|_| "postgres://sqrit:sqrit@localhost:15432/sqrit_test".to_string())
 }
 
 fn unique_table(test_name: &str) -> String {
@@ -21,10 +20,7 @@ async fn setup() -> PgAdapter {
 async fn setup_with_table(table: &str) -> PgAdapter {
     let adapter = setup().await;
     adapter
-        .execute(&format!(
-            "DROP TABLE IF EXISTS \"{}\" CASCADE",
-            table
-        ))
+        .execute(&format!("DROP TABLE IF EXISTS \"{}\" CASCADE", table))
         .await
         .unwrap();
     adapter
@@ -55,7 +51,10 @@ async fn execute_ddl_returns_rows_affected() {
         .await
         .unwrap();
     let result = adapter
-        .execute(&format!("CREATE TABLE \"{}\" (id SERIAL PRIMARY KEY)", table))
+        .execute(&format!(
+            "CREATE TABLE \"{}\" (id SERIAL PRIMARY KEY)",
+            table
+        ))
         .await
         .unwrap();
     assert_eq!(result.rows_affected, Some(0));
@@ -67,7 +66,10 @@ async fn execute_insert_returns_rows_affected() {
     let table = unique_table("insert");
     let adapter = setup_with_table(&table).await;
     let result = adapter
-        .execute(&format!("INSERT INTO \"{}\" (name, active) VALUES ('alice', true)", table))
+        .execute(&format!(
+            "INSERT INTO \"{}\" (name, active) VALUES ('alice', true)",
+            table
+        ))
         .await
         .unwrap();
     assert_eq!(result.rows_affected, Some(1));
@@ -79,30 +81,54 @@ async fn execute_select_returns_columns_and_rows() {
     let table = unique_table("select");
     let adapter = setup_with_table(&table).await;
     adapter
-        .execute(&format!("INSERT INTO \"{}\" (name, active) VALUES ('alice', true)", table))
+        .execute(&format!(
+            "INSERT INTO \"{}\" (name, active) VALUES ('alice', true)",
+            table
+        ))
         .await
         .unwrap();
     adapter
-        .execute(&format!("INSERT INTO \"{}\" (name, active) VALUES ('bob', false)", table))
+        .execute(&format!(
+            "INSERT INTO \"{}\" (name, active) VALUES ('bob', false)",
+            table
+        ))
         .await
         .unwrap();
     adapter
-        .execute(&format!("INSERT INTO \"{}\" (name, active) VALUES ('carol', NULL)", table))
+        .execute(&format!(
+            "INSERT INTO \"{}\" (name, active) VALUES ('carol', NULL)",
+            table
+        ))
         .await
         .unwrap();
 
     let result = adapter
-        .execute(&format!("SELECT id, name, active FROM \"{}\" ORDER BY id", table))
+        .execute(&format!(
+            "SELECT id, name, active FROM \"{}\" ORDER BY id",
+            table
+        ))
         .await
         .unwrap();
 
     assert_eq!(result.columns, vec!["id", "name", "active"]);
     assert_eq!(result.rows.len(), 3);
-    assert_eq!(result.rows[0].get("name").unwrap(), &Value::Text("alice".into()));
+    assert_eq!(
+        result.rows[0].get("name").unwrap(),
+        &Value::Text("alice".into())
+    );
     assert_eq!(result.rows[0].get("active").unwrap(), &Value::Boolean(true));
-    assert_eq!(result.rows[1].get("name").unwrap(), &Value::Text("bob".into()));
-    assert_eq!(result.rows[1].get("active").unwrap(), &Value::Boolean(false));
-    assert_eq!(result.rows[2].get("name").unwrap(), &Value::Text("carol".into()));
+    assert_eq!(
+        result.rows[1].get("name").unwrap(),
+        &Value::Text("bob".into())
+    );
+    assert_eq!(
+        result.rows[1].get("active").unwrap(),
+        &Value::Boolean(false)
+    );
+    assert_eq!(
+        result.rows[2].get("name").unwrap(),
+        &Value::Text("carol".into())
+    );
     assert_eq!(result.rows[2].get("active").unwrap(), &Value::Null);
 }
 
@@ -153,11 +179,7 @@ async fn execute_paginated_respects_offset_and_limit() {
     }
 
     let result = adapter
-        .execute_paginated(
-            &format!("SELECT * FROM \"{}\" ORDER BY id", table),
-            2,
-            2,
-        )
+        .execute_paginated(&format!("SELECT * FROM \"{}\" ORDER BY id", table), 2, 2)
         .await
         .unwrap();
     assert_eq!(result.rows.len(), 2);
@@ -173,14 +195,14 @@ async fn list_views_includes_created_view() {
     let view = format!("{}_active_v", table);
     let adapter = setup_with_table(&table).await;
     adapter
-        .execute(&format!("INSERT INTO \"{}\" (name, active) VALUES ('alice', true)", table))
+        .execute(&format!(
+            "INSERT INTO \"{}\" (name, active) VALUES ('alice', true)",
+            table
+        ))
         .await
         .unwrap();
     adapter
-        .execute(&format!(
-            "DROP VIEW IF EXISTS \"{}\"",
-            view
-        ))
+        .execute(&format!("DROP VIEW IF EXISTS \"{}\"", view))
         .await
         .unwrap();
     adapter

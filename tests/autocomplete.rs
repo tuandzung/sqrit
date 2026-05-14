@@ -1,5 +1,5 @@
-use sqrit::autocomplete::{AutocompleteState, current_word_prefix, suggest};
-use sqrit::db::types::{SchemaInfo, TableInfo, ColumnInfo, ViewInfo};
+use sqrit::autocomplete::{current_word_prefix, suggest, AutocompleteState};
+use sqrit::db::types::{ColumnInfo, SchemaInfo, TableInfo, ViewInfo};
 
 #[test]
 fn open_shows_popup_with_candidates_and_selects_first() {
@@ -74,7 +74,12 @@ fn prev_cycles_backward() {
 #[test]
 fn filter_narrows_candidates_case_insensitive() {
     let mut state = AutocompleteState::new();
-    state.open(vec!["SELECT".into(), "INSERT".into(), "UPDATE".into(), "DELETE".into()]);
+    state.open(vec![
+        "SELECT".into(),
+        "INSERT".into(),
+        "UPDATE".into(),
+        "DELETE".into(),
+    ]);
 
     state.filter("se");
     assert_eq!(state.filtered(), vec!["SELECT"]);
@@ -191,8 +196,14 @@ fn suggest_empty_prefix_returns_nothing() {
 fn suggest_includes_table_names_from_schema() {
     let schema = SchemaInfo {
         tables: vec![
-            TableInfo { name: "users".into(), columns: vec![] },
-            TableInfo { name: "orders".into(), columns: vec![] },
+            TableInfo {
+                name: "users".into(),
+                columns: vec![],
+            },
+            TableInfo {
+                name: "orders".into(),
+                columns: vec![],
+            },
         ],
         views: vec![],
     };
@@ -205,7 +216,10 @@ fn suggest_includes_table_names_from_schema() {
 fn suggest_includes_view_names_from_schema() {
     let schema = SchemaInfo {
         tables: vec![],
-        views: vec![ViewInfo { name: "active_users".into(), columns: vec![] }],
+        views: vec![ViewInfo {
+            name: "active_users".into(),
+            columns: vec![],
+        }],
     };
     let results = suggest("act", Some(&schema));
     assert!(results.contains(&"active_users".to_string()));
@@ -218,15 +232,28 @@ fn suggest_includes_column_names_from_all_tables() {
             TableInfo {
                 name: "users".into(),
                 columns: vec![
-                    ColumnInfo { name: "id".into(), data_type: "INTEGER".into(), nullable: false, is_primary_key: true },
-                    ColumnInfo { name: "email".into(), data_type: "TEXT".into(), nullable: false, is_primary_key: false },
+                    ColumnInfo {
+                        name: "id".into(),
+                        data_type: "INTEGER".into(),
+                        nullable: false,
+                        is_primary_key: true,
+                    },
+                    ColumnInfo {
+                        name: "email".into(),
+                        data_type: "TEXT".into(),
+                        nullable: false,
+                        is_primary_key: false,
+                    },
                 ],
             },
             TableInfo {
                 name: "orders".into(),
-                columns: vec![
-                    ColumnInfo { name: "order_id".into(), data_type: "INTEGER".into(), nullable: false, is_primary_key: true },
-                ],
+                columns: vec![ColumnInfo {
+                    name: "order_id".into(),
+                    data_type: "INTEGER".into(),
+                    nullable: false,
+                    is_primary_key: true,
+                }],
             },
         ],
         views: vec![],
@@ -241,7 +268,12 @@ fn suggest_deduplicates_column_and_keyword() {
     let schema = SchemaInfo {
         tables: vec![TableInfo {
             name: "t".into(),
-            columns: vec![ColumnInfo { name: "insert_time".into(), data_type: "TEXT".into(), nullable: false, is_primary_key: false }],
+            columns: vec![ColumnInfo {
+                name: "insert_time".into(),
+                data_type: "TEXT".into(),
+                nullable: false,
+                is_primary_key: false,
+            }],
         }],
         views: vec![],
     };

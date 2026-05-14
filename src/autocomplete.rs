@@ -15,8 +15,7 @@ pub fn current_word_prefix(text: &str, row: usize, col: usize) -> String {
 }
 
 fn prefix_matches(candidate: &str, prefix: &str) -> bool {
-    candidate.len() >= prefix.len()
-        && candidate[..prefix.len()].eq_ignore_ascii_case(prefix)
+    candidate.len() >= prefix.len() && candidate[..prefix.len()].eq_ignore_ascii_case(prefix)
 }
 
 pub fn suggest(prefix: &str, schema: Option<&crate::db::types::SchemaInfo>) -> Vec<String> {
@@ -38,8 +37,26 @@ pub fn suggest(prefix: &str, schema: Option<&crate::db::types::SchemaInfo>) -> V
     }
 
     if let Some(schema) = schema {
-        add_schema_items(&schema.tables.iter().map(|t| (t.name.as_str(), t.columns.as_slice())).collect::<Vec<_>>(), prefix, &mut seen, &mut results);
-        add_schema_items(&schema.views.iter().map(|v| (v.name.as_str(), v.columns.as_slice())).collect::<Vec<_>>(), prefix, &mut seen, &mut results);
+        add_schema_items(
+            &schema
+                .tables
+                .iter()
+                .map(|t| (t.name.as_str(), t.columns.as_slice()))
+                .collect::<Vec<_>>(),
+            prefix,
+            &mut seen,
+            &mut results,
+        );
+        add_schema_items(
+            &schema
+                .views
+                .iter()
+                .map(|v| (v.name.as_str(), v.columns.as_slice()))
+                .collect::<Vec<_>>(),
+            prefix,
+            &mut seen,
+            &mut results,
+        );
     }
 
     results
@@ -128,7 +145,8 @@ impl AutocompleteState {
         if self.filtered_indices.is_empty() {
             return;
         }
-        self.selected = (self.selected + self.filtered_indices.len() - 1) % self.filtered_indices.len();
+        self.selected =
+            (self.selected + self.filtered_indices.len() - 1) % self.filtered_indices.len();
     }
 
     pub fn filter(&mut self, prefix: &str) {
