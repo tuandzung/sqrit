@@ -63,3 +63,18 @@ pub async fn wait_for_query(app: &mut App, timeout: std::time::Duration) {
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     }
 }
+
+#[allow(dead_code)]
+pub async fn wait_for_connect(app: &mut App, timeout: std::time::Duration) {
+    let start = std::time::Instant::now();
+    loop {
+        app.drain_async_results();
+        if app.explorer_state.schema.is_some() || matches!(app.query_status, QueryStatus::Error(_)) {
+            return;
+        }
+        if start.elapsed() >= timeout {
+            panic!("Timed out waiting for connect result after {:?}", timeout);
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+}

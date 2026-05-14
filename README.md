@@ -9,6 +9,7 @@ The lazygit of SQL databases. Connect, query, browse — from the terminal.
 - **SQL highlighting**: keywords, types, strings, comments, numbers
 - **3-pane TUI**: Explorer sidebar, Query editor, Results table
 - **Connection picker**: filter by name, select to connect
+- **Non-blocking I/O**: async DB calls via Tokio — UI never freezes during queries or schema loads
 - **Zero-config UX**: run `sqrit`, pick a connection, go
 
 ## Install
@@ -122,6 +123,18 @@ cargo test --test sqlite_adapter  # single test suite
 ```
 
 Spec-driven development. See `SPEC.md` for task status and invariants.
+
+## Architecture
+
+Single `App` struct owns all state. Three core layers:
+
+1. **Database** (`src/db/`) — `Database` trait with adapters per backend. All DB ops go through this trait. Async via `Tokio::spawn` + `mpsc` channel — UI never blocks on DB calls.
+
+2. **Modes** (`src/mode.rs` + `src/mode/`) — `Mode` enum dispatches `handle_key()` to mode handlers. Modes: Picker, Explorer, QueryNormal, QueryInsert, Results.
+
+3. **Event loop** (`src/app.rs`) — 100ms poll loop. Spawns async DB tasks, drains results via `mpsc` channel. Connection happens async on picker selection — adapter created, connected, and schema loaded in a single spawned task.
+
+**Async result flow**: `AsyncResult` enum carries `QueryDone`, `Connected`, and `ConnectFailed` messages through the channel. `drain_async_results()` processes them each tick. The `query_id` counter prevents stale result overwrites.
 
 ## License
 
