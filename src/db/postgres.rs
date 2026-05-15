@@ -17,9 +17,7 @@ fn pg_row_to_value(row: &sqlx::postgres::PgRow, i: usize) -> Value {
                 "FLOAT4" => Value::Float(row.get::<f32, _>(i) as f64),
                 "FLOAT8" => Value::Float(row.get::<f64, _>(i)),
                 "BOOL" => Value::Boolean(row.get::<bool, _>(i)),
-                "TEXT" | "VARCHAR" | "NAME" | "BPCHAR" => {
-                    Value::Text(row.get::<String, _>(i))
-                }
+                "TEXT" | "VARCHAR" | "NAME" | "BPCHAR" => Value::Text(row.get::<String, _>(i)),
                 _ => {
                     let type_name = raw.type_info().name().to_string();
                     let s: Result<String, _> = row.try_get(i);
@@ -61,10 +59,7 @@ fn is_query_returning_rows(sql: &str) -> bool {
         .unwrap_or("")
         .to_uppercase();
 
-    matches!(
-        first_word.as_str(),
-        "SELECT" | "WITH" | "VALUES" | "TABLE"
-    )
+    matches!(first_word.as_str(), "SELECT" | "WITH" | "VALUES" | "TABLE")
 }
 
 pub struct PgAdapter {
@@ -97,7 +92,10 @@ impl Database for PgAdapter {
     }
 
     async fn execute(&self, query: &str) -> anyhow::Result<QueryResult> {
-        let pool = self.pool.as_ref().ok_or_else(|| anyhow::anyhow!("not connected"))?;
+        let pool = self
+            .pool
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("not connected"))?;
         let is_select = is_query_returning_rows(query);
 
         if is_select {
@@ -165,31 +163,36 @@ impl Database for PgAdapter {
         Ok(result
             .rows
             .iter()
-            .filter_map(|r| r.get("tablename").and_then(|v| match v {
-                Value::Text(s) => Some(s.clone()),
-                _ => None,
-            }))
+            .filter_map(|r| {
+                r.get("tablename").and_then(|v| match v {
+                    Value::Text(s) => Some(s.clone()),
+                    _ => None,
+                })
+            })
             .collect())
     }
 
     async fn list_views(&self) -> anyhow::Result<Vec<String>> {
         let result = self
-            .execute(
-                "SELECT viewname FROM pg_views WHERE schemaname = 'public' ORDER BY viewname",
-            )
+            .execute("SELECT viewname FROM pg_views WHERE schemaname = 'public' ORDER BY viewname")
             .await?;
         Ok(result
             .rows
             .iter()
-            .filter_map(|r| r.get("viewname").and_then(|v| match v {
-                Value::Text(s) => Some(s.clone()),
-                _ => None,
-            }))
+            .filter_map(|r| {
+                r.get("viewname").and_then(|v| match v {
+                    Value::Text(s) => Some(s.clone()),
+                    _ => None,
+                })
+            })
             .collect())
     }
 
     async fn list_columns(&self, table: &str) -> anyhow::Result<Vec<ColumnInfo>> {
-        let pool = self.pool.as_ref().ok_or_else(|| anyhow::anyhow!("not connected"))?;
+        let pool = self
+            .pool
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("not connected"))?;
         let rows = sqlx::query_as::<_, (String, String, bool, bool)>(
             "SELECT column_name, data_type, is_nullable = 'YES', EXISTS (
                 SELECT 1 FROM information_schema.table_constraints tc

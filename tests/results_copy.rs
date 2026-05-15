@@ -1,9 +1,9 @@
 mod common;
 
-use sqrit::clipboard::{format_cell, format_row, format_all, format_csv, format_json};
 use sqrit::app::{App, FocusedPane, QueryStatus};
-use sqrit::mode::Mode;
+use sqrit::clipboard::{format_all, format_cell, format_csv, format_json, format_row};
 use sqrit::db::types::{QueryResult, Value};
+use sqrit::mode::Mode;
 
 fn make_result() -> QueryResult {
     let mut result = QueryResult::empty();
@@ -69,7 +69,10 @@ fn format_csv_escapes() {
     r.insert("name".to_string(), Value::Text("a,b".to_string()));
     result.rows.push(r);
     let mut r2 = std::collections::HashMap::new();
-    r2.insert("name".to_string(), Value::Text("he said \"hi\"".to_string()));
+    r2.insert(
+        "name".to_string(),
+        Value::Text("he said \"hi\"".to_string()),
+    );
     result.rows.push(r2);
     let text = format_csv(&result);
     assert_eq!(text, "name\n\"a,b\"\n\"he said \"\"hi\"\"\"");
@@ -80,7 +83,10 @@ fn format_csv_escapes() {
 fn format_json_returns_json() {
     let result = make_result();
     let text = format_json(&result);
-    assert_eq!(text, "[{\"name\":\"alice\",\"age\":\"30\"},{\"name\":\"bob\",\"age\":\"25\"}]");
+    assert_eq!(
+        text,
+        "[{\"name\":\"alice\",\"age\":\"30\"},{\"name\":\"bob\",\"age\":\"25\"}]"
+    );
 
     // Verify valid JSON
     let parsed: serde_json::Value = serde_json::from_str(&text).unwrap();

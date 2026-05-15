@@ -6,16 +6,18 @@ use std::net::{TcpStream, ToSocketAddrs};
 use std::time::Duration;
 
 fn db_url() -> String {
-    std::env::var("MYSQL_URL").unwrap_or_else(|_| {
-        "mysql://sqrit:sqrit@localhost:13306/sqrit_test".to_string()
-    })
+    std::env::var("MYSQL_URL")
+        .unwrap_or_else(|_| "mysql://sqrit:sqrit@localhost:13306/sqrit_test".to_string())
 }
 
 fn mysql_available() -> bool {
-    "localhost:13306".to_socket_addrs()
+    "localhost:13306"
+        .to_socket_addrs()
         .ok()
         .and_then(|mut a| a.next())
-        .map_or(false, |a| TcpStream::connect_timeout(&a, Duration::from_millis(500)).is_ok())
+        .map_or(false, |a| {
+            TcpStream::connect_timeout(&a, Duration::from_millis(500)).is_ok()
+        })
 }
 
 fn unique_table(test_name: &str) -> String {
@@ -139,7 +141,10 @@ async fn execute_select_returns_columns_and_rows() {
         result.rows[0].get("name").unwrap(),
         &Value::Text("alice".into())
     );
-    assert_eq!(result.rows[1].get("name").unwrap(), &Value::Text("bob".into()));
+    assert_eq!(
+        result.rows[1].get("name").unwrap(),
+        &Value::Text("bob".into())
+    );
     assert_eq!(
         result.rows[2].get("name").unwrap(),
         &Value::Text("carol".into())
@@ -193,11 +198,7 @@ async fn execute_paginated_respects_offset_and_limit() {
     }
 
     let result = adapter
-        .execute_paginated(
-            &format!("SELECT * FROM `{}` ORDER BY id", table),
-            2,
-            2,
-        )
+        .execute_paginated(&format!("SELECT * FROM `{}` ORDER BY id", table), 2, 2)
         .await
         .unwrap();
     assert_eq!(result.rows.len(), 2);
@@ -294,14 +295,20 @@ async fn execute_select_with_leading_comment_returns_rows() {
     let table = unique_table("comment_sel");
     let adapter = setup_with_table(&table).await;
     adapter
-        .execute(&format!("INSERT INTO `{}` (name, active) VALUES ('alice', true)", table))
+        .execute(&format!(
+            "INSERT INTO `{}` (name, active) VALUES ('alice', true)",
+            table
+        ))
         .await
         .unwrap();
 
     let sql = format!("-- leading comment\nSELECT id, name FROM `{}`", table);
     let result = adapter.execute(&sql).await.unwrap();
     assert!(!result.rows.is_empty());
-    assert_eq!(result.rows[0].get("name").unwrap(), &Value::Text("alice".into()));
+    assert_eq!(
+        result.rows[0].get("name").unwrap(),
+        &Value::Text("alice".into())
+    );
 }
 
 // #14 SELECT with leading block comment is treated as row-returning
@@ -311,14 +318,20 @@ async fn execute_select_with_leading_block_comment_returns_rows() {
     let table = unique_table("block_sel");
     let adapter = setup_with_table(&table).await;
     adapter
-        .execute(&format!("INSERT INTO `{}` (name, active) VALUES ('bob', false)", table))
+        .execute(&format!(
+            "INSERT INTO `{}` (name, active) VALUES ('bob', false)",
+            table
+        ))
         .await
         .unwrap();
 
     let sql = format!("/* block comment */ SELECT id, name FROM `{}`", table);
     let result = adapter.execute(&sql).await.unwrap();
     assert!(!result.rows.is_empty());
-    assert_eq!(result.rows[0].get("name").unwrap(), &Value::Text("bob".into()));
+    assert_eq!(
+        result.rows[0].get("name").unwrap(),
+        &Value::Text("bob".into())
+    );
 }
 
 // #15 whitespace-only and comment-only input returns error

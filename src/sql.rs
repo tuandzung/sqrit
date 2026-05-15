@@ -29,23 +29,109 @@ pub fn types() -> &'static [&'static str] {
 }
 
 const KEYWORDS: &[&str] = &[
-    "SELECT", "FROM", "WHERE", "INSERT", "INTO", "VALUES", "UPDATE", "SET",
-    "DELETE", "CREATE", "DROP", "ALTER", "TABLE", "INDEX", "VIEW", "JOIN",
-    "INNER", "LEFT", "RIGHT", "OUTER", "CROSS", "ON", "AND", "OR", "NOT",
-    "NULL", "IS", "IN", "BETWEEN", "LIKE", "AS", "ORDER", "BY", "GROUP",
-    "HAVING", "LIMIT", "OFFSET", "UNION", "ALL", "DISTINCT", "EXISTS",
-    "CASE", "WHEN", "THEN", "ELSE", "END", "ASC", "DESC", "PRIMARY", "KEY",
-    "FOREIGN", "REFERENCES", "DEFAULT", "CONSTRAINT", "UNIQUE", "CHECK",
-    "IF", "BEGIN", "COMMIT", "ROLLBACK", "TRANSACTION", "RETURNING",
-    "WITH", "RECURSIVE", "OVER", "PARTITION", "WINDOW", "ROWS", "RANGE",
-    "UNBOUNDED", "PRECEDING", "FOLLOWING", "CURRENT", "ROW",
+    "SELECT",
+    "FROM",
+    "WHERE",
+    "INSERT",
+    "INTO",
+    "VALUES",
+    "UPDATE",
+    "SET",
+    "DELETE",
+    "CREATE",
+    "DROP",
+    "ALTER",
+    "TABLE",
+    "INDEX",
+    "VIEW",
+    "JOIN",
+    "INNER",
+    "LEFT",
+    "RIGHT",
+    "OUTER",
+    "CROSS",
+    "ON",
+    "AND",
+    "OR",
+    "NOT",
+    "NULL",
+    "IS",
+    "IN",
+    "BETWEEN",
+    "LIKE",
+    "AS",
+    "ORDER",
+    "BY",
+    "GROUP",
+    "HAVING",
+    "LIMIT",
+    "OFFSET",
+    "UNION",
+    "ALL",
+    "DISTINCT",
+    "EXISTS",
+    "CASE",
+    "WHEN",
+    "THEN",
+    "ELSE",
+    "END",
+    "ASC",
+    "DESC",
+    "PRIMARY",
+    "KEY",
+    "FOREIGN",
+    "REFERENCES",
+    "DEFAULT",
+    "CONSTRAINT",
+    "UNIQUE",
+    "CHECK",
+    "IF",
+    "BEGIN",
+    "COMMIT",
+    "ROLLBACK",
+    "TRANSACTION",
+    "RETURNING",
+    "WITH",
+    "RECURSIVE",
+    "OVER",
+    "PARTITION",
+    "WINDOW",
+    "ROWS",
+    "RANGE",
+    "UNBOUNDED",
+    "PRECEDING",
+    "FOLLOWING",
+    "CURRENT",
+    "ROW",
 ];
 
 const SQL_TYPES: &[&str] = &[
-    "INTEGER", "INT", "BIGINT", "SMALLINT", "TINYINT", "FLOAT", "DOUBLE",
-    "REAL", "DECIMAL", "NUMERIC", "CHAR", "VARCHAR", "TEXT", "BLOB",
-    "BOOLEAN", "BOOL", "DATE", "TIME", "DATETIME", "TIMESTAMP", "SERIAL",
-    "BIGSERIAL", "UUID", "JSON", "JSONB", "BYTEA",
+    "INTEGER",
+    "INT",
+    "BIGINT",
+    "SMALLINT",
+    "TINYINT",
+    "FLOAT",
+    "DOUBLE",
+    "REAL",
+    "DECIMAL",
+    "NUMERIC",
+    "CHAR",
+    "VARCHAR",
+    "TEXT",
+    "BLOB",
+    "BOOLEAN",
+    "BOOL",
+    "DATE",
+    "TIME",
+    "DATETIME",
+    "TIMESTAMP",
+    "SERIAL",
+    "BIGSERIAL",
+    "UUID",
+    "JSON",
+    "JSONB",
+    "BYTEA",
 ];
 
 const PUNCTUATION: &[char] = &['(', ')', ',', ';', '.', '*'];
@@ -70,7 +156,10 @@ pub fn tokenize(sql: &str) -> Vec<Token> {
                         break;
                     }
                 }
-                tokens.push(Token { kind: TokenKind::Whitespace, text });
+                tokens.push(Token {
+                    kind: TokenKind::Whitespace,
+                    text,
+                });
             }
             '\'' | '"' => {
                 tokens.push(tokenize_string(&mut chars));
@@ -89,14 +178,23 @@ pub fn tokenize(sql: &str) -> Vec<Token> {
             }
             c if PUNCTUATION.contains(&c) => {
                 chars.next();
-                tokens.push(Token { kind: TokenKind::Punctuation, text: c.to_string() });
+                tokens.push(Token {
+                    kind: TokenKind::Punctuation,
+                    text: c.to_string(),
+                });
             }
             _ => {
                 if let Some(op) = try_operator(&mut chars) {
-                    tokens.push(Token { kind: TokenKind::Operator, text: op });
+                    tokens.push(Token {
+                        kind: TokenKind::Operator,
+                        text: op,
+                    });
                 } else {
                     chars.next();
-                    tokens.push(Token { kind: TokenKind::Punctuation, text: c.to_string() });
+                    tokens.push(Token {
+                        kind: TokenKind::Punctuation,
+                        text: c.to_string(),
+                    });
                 }
             }
         }
@@ -121,7 +219,10 @@ fn tokenize_string(chars: &mut Peekable<Chars>) -> Token {
         }
     }
 
-    Token { kind: TokenKind::String, text }
+    Token {
+        kind: TokenKind::String,
+        text,
+    }
 }
 
 fn tokenize_line_comment(chars: &mut Peekable<Chars>) -> Token {
@@ -133,7 +234,10 @@ fn tokenize_line_comment(chars: &mut Peekable<Chars>) -> Token {
         text.push(c);
         chars.next();
     }
-    Token { kind: TokenKind::Comment, text }
+    Token {
+        kind: TokenKind::Comment,
+        text,
+    }
 }
 
 fn tokenize_block_comment(chars: &mut Peekable<Chars>) -> Token {
@@ -157,7 +261,10 @@ fn tokenize_block_comment(chars: &mut Peekable<Chars>) -> Token {
         found_star = c == '*';
     }
 
-    Token { kind: TokenKind::Comment, text }
+    Token {
+        kind: TokenKind::Comment,
+        text,
+    }
 }
 
 fn tokenize_number(chars: &mut Peekable<Chars>) -> Token {
@@ -177,7 +284,10 @@ fn tokenize_number(chars: &mut Peekable<Chars>) -> Token {
         }
     }
 
-    Token { kind: TokenKind::Number, text }
+    Token {
+        kind: TokenKind::Number,
+        text,
+    }
 }
 
 fn tokenize_word(chars: &mut Peekable<Chars>) -> Token {

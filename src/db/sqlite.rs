@@ -23,8 +23,7 @@ impl SqliteAdapter {
 impl Database for SqliteAdapter {
     async fn connect(&mut self) -> anyhow::Result<()> {
         let path = self.path.clone();
-        let conn = tokio::task::spawn_blocking(move || rusqlite::Connection::open(&path))
-            .await??;
+        let conn = tokio::task::spawn_blocking(move || rusqlite::Connection::open(&path)).await??;
         self.conn = Some(Arc::new(std::sync::Mutex::new(conn)));
         Ok(())
     }
@@ -35,17 +34,17 @@ impl Database for SqliteAdapter {
     }
 
     async fn execute(&self, query: &str) -> anyhow::Result<QueryResult> {
-        let conn = self.conn.as_ref().ok_or_else(|| anyhow::anyhow!("not connected"))?;
+        let conn = self
+            .conn
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("not connected"))?;
         let conn = Arc::clone(conn);
         let query = query.to_string();
         tokio::task::spawn_blocking(move || {
             let conn = conn.lock().unwrap();
             let mut stmt = conn.prepare(&query)?;
-            let column_names: Vec<String> = stmt
-                .column_names()
-                .iter()
-                .map(|s| s.to_string())
-                .collect();
+            let column_names: Vec<String> =
+                stmt.column_names().iter().map(|s| s.to_string()).collect();
             let mut result_rows = vec![];
             let mut rows = stmt.query([])?;
             while let Some(row) = rows.next()? {
@@ -100,31 +99,36 @@ impl Database for SqliteAdapter {
         Ok(result
             .rows
             .iter()
-            .filter_map(|r| r.get("name").and_then(|v| match v {
-                Value::Text(s) => Some(s.clone()),
-                _ => None,
-            }))
+            .filter_map(|r| {
+                r.get("name").and_then(|v| match v {
+                    Value::Text(s) => Some(s.clone()),
+                    _ => None,
+                })
+            })
             .collect())
     }
 
     async fn list_views(&self) -> anyhow::Result<Vec<String>> {
         let result = self
-            .execute(
-                "SELECT name FROM sqlite_master WHERE type='view' ORDER BY name",
-            )
+            .execute("SELECT name FROM sqlite_master WHERE type='view' ORDER BY name")
             .await?;
         Ok(result
             .rows
             .iter()
-            .filter_map(|r| r.get("name").and_then(|v| match v {
-                Value::Text(s) => Some(s.clone()),
-                _ => None,
-            }))
+            .filter_map(|r| {
+                r.get("name").and_then(|v| match v {
+                    Value::Text(s) => Some(s.clone()),
+                    _ => None,
+                })
+            })
             .collect())
     }
 
     async fn list_columns(&self, table: &str) -> anyhow::Result<Vec<ColumnInfo>> {
-        let conn = self.conn.as_ref().ok_or_else(|| anyhow::anyhow!("not connected"))?;
+        let conn = self
+            .conn
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("not connected"))?;
         let conn = Arc::clone(conn);
         let table = table.to_string();
         tokio::task::spawn_blocking(move || {

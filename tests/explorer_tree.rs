@@ -11,15 +11,28 @@ fn make_schema() -> SchemaInfo {
             TableInfo {
                 name: "users".to_string(),
                 columns: vec![
-                    ColumnInfo { name: "id".to_string(), data_type: "INTEGER".to_string(), nullable: false, is_primary_key: true },
-                    ColumnInfo { name: "name".to_string(), data_type: "TEXT".to_string(), nullable: false, is_primary_key: false },
+                    ColumnInfo {
+                        name: "id".to_string(),
+                        data_type: "INTEGER".to_string(),
+                        nullable: false,
+                        is_primary_key: true,
+                    },
+                    ColumnInfo {
+                        name: "name".to_string(),
+                        data_type: "TEXT".to_string(),
+                        nullable: false,
+                        is_primary_key: false,
+                    },
                 ],
             },
             TableInfo {
                 name: "orders".to_string(),
-                columns: vec![
-                    ColumnInfo { name: "id".to_string(), data_type: "INTEGER".to_string(), nullable: false, is_primary_key: true },
-                ],
+                columns: vec![ColumnInfo {
+                    name: "id".to_string(),
+                    data_type: "INTEGER".to_string(),
+                    nullable: false,
+                    is_primary_key: true,
+                }],
             },
         ],
         views: vec![],
@@ -34,8 +47,12 @@ fn items_shows_collapsed_tables() {
 
     let items = state.items();
     assert_eq!(items.len(), 2);
-    assert!(matches!(&items[0], TreeItem::Table { name, expanded } if name == "users" && !expanded));
-    assert!(matches!(&items[1], TreeItem::Table { name, expanded } if name == "orders" && !expanded));
+    assert!(
+        matches!(&items[0], TreeItem::Table { name, expanded } if name == "users" && !expanded)
+    );
+    assert!(
+        matches!(&items[1], TreeItem::Table { name, expanded } if name == "orders" && !expanded)
+    );
 }
 
 // T16 #2: toggle expands table, items shows columns
@@ -47,7 +64,9 @@ fn toggle_expand_shows_columns() {
 
     let items = state.items();
     assert_eq!(items.len(), 4); // users + 2 cols + orders
-    assert!(matches!(&items[0], TreeItem::Table { name, expanded } if name == "users" && *expanded));
+    assert!(
+        matches!(&items[0], TreeItem::Table { name, expanded } if name == "users" && *expanded)
+    );
     assert!(matches!(&items[1], TreeItem::Column { name, .. } if name == "id"));
     assert!(matches!(&items[2], TreeItem::Column { name, .. } if name == "name"));
     assert!(matches!(&items[3], TreeItem::Table { name, .. } if name == "orders"));

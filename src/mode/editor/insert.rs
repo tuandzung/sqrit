@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use crossterm::event::{KeyCode, KeyModifiers, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::app::App;
 use crate::mode::Mode;
@@ -20,7 +20,8 @@ pub fn handle_key(key: KeyEvent, app: &mut App) {
         KeyCode::Enter if key.modifiers.contains(KeyModifiers::CONTROL) => {
             app.pending_query = Some(app.editor.text());
         }
-        KeyCode::Tab => {
+        KeyCode::Tab =>
+        {
             #[allow(clippy::collapsible_match)]
             if app.autocomplete.is_visible() {
                 if let Some(word) = app.autocomplete.accept() {

@@ -192,8 +192,8 @@ fn delete_char_removes_at_cursor() {
 fn delete_line_removes_and_returns_line() {
     let mut buf = EditorBuffer::new();
     buf.insert_str("line1\nline2\nline3");
-    buf.go_top();       // row 0
-    buf.cursor_down();   // row 1
+    buf.go_top(); // row 0
+    buf.cursor_down(); // row 1
     let deleted = buf.delete_line();
     assert_eq!(deleted, Some("line2".to_string()));
     assert_eq!(buf.text(), "line1\nline3");

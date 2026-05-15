@@ -1,6 +1,6 @@
-pub mod picker;
 pub mod editor;
 pub mod explorer;
+pub mod picker;
 pub mod results;
 
 use crossterm::event::KeyEvent;

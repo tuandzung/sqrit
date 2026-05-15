@@ -26,9 +26,16 @@ fn tick_autocomplete_opens_after_300ms_idle() {
 
     app.tick_autocomplete();
 
-    assert!(app.autocomplete.is_visible(), "autocomplete should open after 300ms idle");
+    assert!(
+        app.autocomplete.is_visible(),
+        "autocomplete should open after 300ms idle"
+    );
     let filtered = app.autocomplete.filtered();
-    assert!(filtered.contains(&"SELECT"), "should suggest SELECT, got: {:?}", filtered);
+    assert!(
+        filtered.contains(&"SELECT"),
+        "should suggest SELECT, got: {:?}",
+        filtered
+    );
 }
 
 #[test]
@@ -39,7 +46,10 @@ fn tick_autocomplete_does_not_open_before_300ms() {
     }
     // last_keystroke is recent (< 300ms)
     app.tick_autocomplete();
-    assert!(!app.autocomplete.is_visible(), "autocomplete should not open before 300ms");
+    assert!(
+        !app.autocomplete.is_visible(),
+        "autocomplete should not open before 300ms"
+    );
 }
 
 #[test]
@@ -68,7 +78,10 @@ fn insert_mode_char_updates_keystroke_and_filters() {
     app.handle_key_event(KeyEvent::new(KeyCode::Char('L'), KeyModifiers::NONE));
 
     let filtered = app.autocomplete.filtered();
-    assert!(filtered.contains(&"SELECT"), "should still contain SELECT after typing L");
+    assert!(
+        filtered.contains(&"SELECT"),
+        "should still contain SELECT after typing L"
+    );
     // "SET" and "SERIAL" etc. should be filtered out since "SEL" doesn't match
     assert!(!filtered.contains(&"SET"), "SET should be filtered out");
 }
@@ -88,7 +101,10 @@ fn insert_mode_backspace_updates_keystroke_and_filters() {
     app.handle_key_event(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE));
 
     let filtered = app.autocomplete.filtered();
-    assert!(filtered.contains(&"SELECT"), "SELECT should be back after backspace");
+    assert!(
+        filtered.contains(&"SELECT"),
+        "SELECT should be back after backspace"
+    );
 }
 
 #[test]
@@ -126,5 +142,9 @@ fn tick_autocomplete_uses_schema_for_suggestions() {
 
     assert!(app.autocomplete.is_visible());
     let filtered = app.autocomplete.filtered();
-    assert!(filtered.contains(&"email"), "should suggest email column, got: {:?}", filtered);
+    assert!(
+        filtered.contains(&"email"),
+        "should suggest email column, got: {:?}",
+        filtered
+    );
 }

@@ -111,7 +111,10 @@ fn make_results_app(rows: usize) -> App {
     for i in 0..rows {
         let mut row = std::collections::HashMap::new();
         row.insert("a".to_string(), sqrit::db::types::Value::Integer(i as i64));
-        row.insert("b".to_string(), sqrit::db::types::Value::Text(format!("val{}", i)));
+        row.insert(
+            "b".to_string(),
+            sqrit::db::types::Value::Text(format!("val{}", i)),
+        );
         results.rows.push(row);
     }
     app.results = Some(results);

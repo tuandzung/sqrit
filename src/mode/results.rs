@@ -14,7 +14,11 @@ pub fn handle_key(key: KeyEvent, app: &mut App) {
         match key.code {
             KeyCode::Char('c') => {
                 if let Some(ref result) = app.results {
-                    if let Some(text) = clipboard::format_cell(result, app.results_state.selected_row, app.results_state.selected_col) {
+                    if let Some(text) = clipboard::format_cell(
+                        result,
+                        app.results_state.selected_row,
+                        app.results_state.selected_col,
+                    ) {
                         let _ = clipboard::copy_to_clipboard(&text);
                         app.status_message = format!("Copied cell: {}", text);
                     }
@@ -22,7 +26,9 @@ pub fn handle_key(key: KeyEvent, app: &mut App) {
             }
             KeyCode::Char('y') => {
                 if let Some(ref result) = app.results {
-                    if let Some(text) = clipboard::format_row(result, app.results_state.selected_row) {
+                    if let Some(text) =
+                        clipboard::format_row(result, app.results_state.selected_row)
+                    {
                         let _ = clipboard::copy_to_clipboard(&text);
                         app.status_message = format!("Copied row: {}", text);
                     }
@@ -51,7 +57,8 @@ pub fn handle_key(key: KeyEvent, app: &mut App) {
         KeyCode::Char('y') => {
             app.results_state.pending_yank = true;
         }
-        KeyCode::PageDown => {
+        KeyCode::PageDown =>
+        {
             #[allow(clippy::collapsible_match)]
             if app.results_state.has_next_page {
                 app.results_state.page_down();
@@ -60,7 +67,8 @@ pub fn handle_key(key: KeyEvent, app: &mut App) {
                 }
             }
         }
-        KeyCode::PageUp => {
+        KeyCode::PageUp =>
+        {
             #[allow(clippy::collapsible_match)]
             if app.results_state.page_offset > 0 {
                 app.results_state.page_up();
@@ -69,7 +77,9 @@ pub fn handle_key(key: KeyEvent, app: &mut App) {
                 }
             }
         }
-        KeyCode::Char(' ') => { app.pending_space = true; }
+        KeyCode::Char(' ') => {
+            app.pending_space = true;
+        }
         _ => {}
     }
 }

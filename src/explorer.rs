@@ -4,10 +4,24 @@ use crate::db::types::SchemaInfo;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TreeItem {
-    Table { name: String, expanded: bool },
-    Column { table: String, name: String, data_type: String },
-    View { name: String, expanded: bool },
-    ViewColumn { view: String, name: String, data_type: String },
+    Table {
+        name: String,
+        expanded: bool,
+    },
+    Column {
+        table: String,
+        name: String,
+        data_type: String,
+    },
+    View {
+        name: String,
+        expanded: bool,
+    },
+    ViewColumn {
+        view: String,
+        name: String,
+        data_type: String,
+    },
 }
 
 #[derive(Default)]

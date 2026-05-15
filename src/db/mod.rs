@@ -1,8 +1,8 @@
-pub mod types;
 pub mod adapter;
-pub mod sqlite;
-pub mod postgres;
 pub mod mysql;
+pub mod postgres;
+pub mod sqlite;
+pub mod types;
 
 use async_trait::async_trait;
 use types::{ColumnInfo, QueryResult, SchemaInfo};

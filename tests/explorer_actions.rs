@@ -6,14 +6,15 @@ use sqrit::mode::Mode;
 
 fn make_schema() -> SchemaInfo {
     SchemaInfo {
-        tables: vec![
-            TableInfo {
-                name: "users".to_string(),
-                columns: vec![
-                    ColumnInfo { name: "id".to_string(), data_type: "INTEGER".to_string(), nullable: false, is_primary_key: true },
-                ],
-            },
-        ],
+        tables: vec![TableInfo {
+            name: "users".to_string(),
+            columns: vec![ColumnInfo {
+                name: "id".to_string(),
+                data_type: "INTEGER".to_string(),
+                nullable: false,
+                is_primary_key: true,
+            }],
+        }],
         views: vec![],
     }
 }
@@ -38,7 +39,10 @@ fn s_on_table_sets_query() {
     let mode = app.mode;
     mode.handle_key(key, &mut app);
 
-    assert_eq!(app.pending_query, Some("SELECT * FROM users LIMIT 100".to_string()));
+    assert_eq!(
+        app.pending_query,
+        Some("SELECT * FROM users LIMIT 100".to_string())
+    );
     assert_eq!(app.mode, Mode::Results);
 }
 
@@ -58,7 +62,10 @@ fn s_on_column_uses_parent_table() {
     let mode = app.mode;
     mode.handle_key(key, &mut app);
 
-    assert_eq!(app.pending_query, Some("SELECT * FROM users LIMIT 100".to_string()));
+    assert_eq!(
+        app.pending_query,
+        Some("SELECT * FROM users LIMIT 100".to_string())
+    );
 }
 
 // T22: e from QueryNormal switches to Explorer (was space+e, now bare e)
