@@ -293,7 +293,6 @@ async fn execute_invalid_sql_returns_error() {
 
 // #12 connect to invalid host returns error
 #[tokio::test]
-#[ignore]
 async fn connect_to_invalid_host_returns_error() {
     let mut adapter = MySqlAdapter::new("mysql://invalid:invalid@localhost:99999/nodb");
     let result = adapter.connect().await;
