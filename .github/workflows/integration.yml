@@ -49,5 +49,5 @@ jobs:
       - name: Build
         run: cargo build --locked
 
-      - name: Run all tests
-        run: cargo test --locked
+      - name: Run adapter tests (including ignored)
+        run: cargo test --locked --test pg_adapter --test mysql_adapter -- --include-ignored
