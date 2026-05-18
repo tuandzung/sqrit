@@ -2,7 +2,12 @@ use ratatui::layout::Rect;
 use sqrit::app::App;
 
 fn inner(x: u16, y: u16, w: u16, h: u16) -> Rect {
-    Rect { x, y, width: w, height: h }
+    Rect {
+        x,
+        y,
+        width: w,
+        height: h,
+    }
 }
 
 // V8: cursor at row 0, col 0 — no scroll, term coords = inner origin
@@ -20,7 +25,7 @@ fn cursor_mid_viewport_no_scroll() {
     let (scroll, tx, ty) = App::insert_cursor_position(5, 10, inner(2, 3, 80, 20));
     assert_eq!(scroll, 0);
     assert_eq!(tx, 12); // 2 + 10
-    assert_eq!(ty, 8);  // 3 + 5
+    assert_eq!(ty, 8); // 3 + 5
 }
 
 // V8: cursor exactly at last row — no scroll (row 19 in 20-row viewport)
@@ -46,8 +51,8 @@ fn cursor_past_viewport_scrolls() {
 fn cursor_far_past_viewport_scrolls() {
     let (scroll, tx, ty) = App::insert_cursor_position(30, 5, inner(1, 2, 80, 20));
     assert_eq!(scroll, 11); // 30 + 1 - 20
-    assert_eq!(tx, 6);      // 1 + 5
-    assert_eq!(ty, 21);     // 2 + 30 - 11 = 21
+    assert_eq!(tx, 6); // 1 + 5
+    assert_eq!(ty, 21); // 2 + 30 - 11 = 21
 }
 
 // V8: zero-height inner does not panic, scroll = 0, tx/ty do not underflow
@@ -57,7 +62,14 @@ fn zero_height_inner_no_scroll() {
     let (scroll, tx, ty) = App::insert_cursor_position(0, 0, inner_rect);
     assert_eq!(scroll, 0);
     // tx must stay within horizontal bounds of inner rect [x, x+width)
-    assert!(tx < inner_rect.x + inner_rect.width, "tx {tx} outside inner rect horizontal bounds");
+    assert!(
+        tx < inner_rect.x + inner_rect.width,
+        "tx {tx} outside inner rect horizontal bounds"
+    );
     // ty must not underflow below inner rect top
-    assert!(ty >= inner_rect.y, "ty {ty} underflows inner rect top {}", inner_rect.y);
+    assert!(
+        ty >= inner_rect.y,
+        "ty {ty} underflows inner rect top {}",
+        inner_rect.y
+    );
 }

@@ -430,8 +430,8 @@ impl App {
             0
         };
         // All arithmetic stays in usize; truncate to u16 only at the boundary.
-        let term_x_usize = (inner.x as usize + cursor_col)
-            .min(inner.right().saturating_sub(1) as usize);
+        let term_x_usize =
+            (inner.x as usize + cursor_col).min(inner.right().saturating_sub(1) as usize);
         let term_y_usize = inner.y as usize + cursor_row - scroll_usize;
         let scroll_offset = scroll_usize.min(u16::MAX as usize) as u16;
         let term_x = term_x_usize.min(u16::MAX as usize) as u16;
