@@ -424,13 +424,18 @@ impl App {
         inner: Rect,
     ) -> (u16, u16, u16) {
         let inner_h = inner.height as usize;
-        let scroll_offset: u16 = if inner_h > 0 && cursor_row + 1 > inner_h {
-            (cursor_row + 1 - inner_h) as u16
+        let scroll_usize = if inner_h > 0 && cursor_row + 1 > inner_h {
+            cursor_row + 1 - inner_h
         } else {
             0
         };
-        let term_x = (inner.x + cursor_col as u16).min(inner.right().saturating_sub(1));
-        let term_y = inner.y + cursor_row as u16 - scroll_offset;
+        // All arithmetic stays in usize; truncate to u16 only at the boundary.
+        let term_x_usize = (inner.x as usize + cursor_col)
+            .min(inner.right().saturating_sub(1) as usize);
+        let term_y_usize = inner.y as usize + cursor_row - scroll_usize;
+        let scroll_offset = scroll_usize.min(u16::MAX as usize) as u16;
+        let term_x = term_x_usize.min(u16::MAX as usize) as u16;
+        let term_y = term_y_usize.min(u16::MAX as usize) as u16;
         (scroll_offset, term_x, term_y)
     }
 

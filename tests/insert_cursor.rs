@@ -50,9 +50,14 @@ fn cursor_far_past_viewport_scrolls() {
     assert_eq!(ty, 21);     // 2 + 30 - 11 = 21
 }
 
-// V8: zero-height inner does not panic, scroll = 0
+// V8: zero-height inner does not panic, scroll = 0, tx/ty do not underflow
 #[test]
 fn zero_height_inner_no_scroll() {
-    let (scroll, _tx, _ty) = App::insert_cursor_position(0, 0, inner(0, 0, 80, 0));
+    let inner_rect = inner(0, 0, 80, 0);
+    let (scroll, tx, ty) = App::insert_cursor_position(0, 0, inner_rect);
     assert_eq!(scroll, 0);
+    // tx must stay within horizontal bounds of inner rect [x, x+width)
+    assert!(tx < inner_rect.x + inner_rect.width, "tx {tx} outside inner rect horizontal bounds");
+    // ty must not underflow below inner rect top
+    assert!(ty >= inner_rect.y, "ty {ty} underflows inner rect top {}", inner_rect.y);
 }
