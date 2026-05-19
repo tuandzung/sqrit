@@ -415,6 +415,30 @@ impl App {
         frame.render_widget(Paragraph::new(lines), inner);
     }
 
+    /// Computes scroll offset and absolute terminal position for the INSERT mode cursor.
+    /// Returns `(scroll_offset, term_x, term_y)`.
+    /// Pure function — no side effects, fully testable.
+    pub fn insert_cursor_position(
+        cursor_row: usize,
+        cursor_col: usize,
+        inner: Rect,
+    ) -> (u16, u16, u16) {
+        let inner_h = inner.height as usize;
+        let scroll_usize = if inner_h > 0 && cursor_row + 1 > inner_h {
+            cursor_row + 1 - inner_h
+        } else {
+            0
+        };
+        // All arithmetic stays in usize; truncate to u16 only at the boundary.
+        let term_x_usize =
+            (inner.x as usize + cursor_col).min(inner.right().saturating_sub(1) as usize);
+        let term_y_usize = inner.y as usize + cursor_row - scroll_usize;
+        let scroll_offset = scroll_usize.min(u16::MAX as usize) as u16;
+        let term_x = term_x_usize.min(u16::MAX as usize) as u16;
+        let term_y = term_y_usize.min(u16::MAX as usize) as u16;
+        (scroll_offset, term_x, term_y)
+    }
+
     fn render_query(&self, frame: &mut ratatui::Frame, area: Rect) {
         let border = self.border_style(FocusedPane::Query);
         let mode_label = match self.mode {
@@ -429,20 +453,33 @@ impl App {
         let inner = block.inner(area);
         frame.render_widget(block, area);
 
+        let cursor_row = self.editor.cursor_row();
+        let cursor_col = self.editor.cursor_col();
+        let (scroll_offset, term_x, term_y) =
+            Self::insert_cursor_position(cursor_row, cursor_col, inner);
+
         let query_text = self.highlighted_lines();
-        let query_paragraph = Paragraph::new(query_text);
+        let query_paragraph = Paragraph::new(query_text).scroll((scroll_offset, 0));
         frame.render_widget(query_paragraph, inner);
 
-        // Autocomplete popup
+        // Show terminal cursor in INSERT mode (V8).
+        if self.mode == Mode::QueryInsert {
+            frame.set_cursor_position(ratatui::layout::Position {
+                x: term_x,
+                y: term_y,
+            });
+        }
+
+        // Autocomplete popup — y position accounts for scroll offset.
         if self.autocomplete.is_visible() {
             let filtered = self.autocomplete.filtered();
             if !filtered.is_empty() {
                 let max_visible = 8usize;
                 let popup_height = filtered.len().min(max_visible) as u16 + 2;
                 let popup_width = 30u16;
-                let cursor_row = self.editor.cursor_row() as u16;
-                let popup_y = inner.y + cursor_row.saturating_add(1).min(inner.height);
-                let popup_x = inner.x + self.editor.cursor_col() as u16;
+                let visible_cursor_row = cursor_row as u16 - scroll_offset;
+                let popup_y = inner.y + visible_cursor_row.saturating_add(1).min(inner.height);
+                let popup_x = inner.x + cursor_col as u16;
                 let popup_area = Rect {
                     x: popup_x.min(inner.right().saturating_sub(popup_width)),
                     y: popup_y.min(inner.bottom().saturating_sub(popup_height)),
