@@ -311,7 +311,7 @@ impl App {
         Ok(())
     }
 
-    fn render(&self, frame: &mut ratatui::Frame) {
+    fn render(&mut self, frame: &mut ratatui::Frame) {
         let area = frame.area();
         match self.mode {
             Mode::Picker => self.render_picker(frame, area),
@@ -319,7 +319,7 @@ impl App {
         }
     }
 
-    fn render_main(&self, frame: &mut ratatui::Frame, area: Rect) {
+    fn render_main(&mut self, frame: &mut ratatui::Frame, area: Rect) {
         let status_height = 1u16;
         let main_height = area.height.saturating_sub(status_height);
 
@@ -336,7 +336,10 @@ impl App {
         // Maximized: render only focused pane full-screen
         if let Some(maximized_pane) = self.maximized {
             match maximized_pane {
-                FocusedPane::Explorer => self.render_explorer(frame, main_area),
+                FocusedPane::Explorer => {
+                    self.prepare_explorer_viewport(main_area);
+                    self.render_explorer(frame, main_area);
+                }
                 FocusedPane::Query => self.render_query(frame, main_area),
                 FocusedPane::Results => self.render_results(frame, main_area),
             }
@@ -362,12 +365,18 @@ impl App {
         let query_area = right_chunks[0];
         let results_area = right_chunks[1];
 
+        self.prepare_explorer_viewport(explorer_area);
         self.render_explorer(frame, explorer_area);
         self.render_query(frame, query_area);
         self.render_results(frame, results_area);
 
         let status_text = self.status_bar_text();
         frame.render_widget(Paragraph::new(status_text), status_area);
+    }
+
+    fn prepare_explorer_viewport(&mut self, area: Rect) {
+        let inner = Block::default().borders(Borders::ALL).inner(area);
+        self.explorer_state.set_viewport(inner.height as usize);
     }
 
     fn render_explorer(&self, frame: &mut ratatui::Frame, area: Rect) {
@@ -380,9 +389,14 @@ impl App {
         frame.render_widget(block, area);
 
         let items = self.explorer_state.items();
+        let scroll_offset = self.explorer_state.scroll_offset;
+        let visible_rows = self.explorer_state.visible_rows;
+        let selected = self.explorer_state.selected;
         let lines: Vec<Line<'_>> = items
             .iter()
             .enumerate()
+            .skip(scroll_offset)
+            .take(visible_rows)
             .map(|(i, item)| {
                 let display = match item {
                     crate::explorer::TreeItem::Table { name, expanded } => {
@@ -404,7 +418,7 @@ impl App {
                         format!("  {} ({})", name, data_type)
                     }
                 };
-                let style = if i == self.explorer_state.selected {
+                let style = if i == selected {
                     Style::default().bg(Color::DarkGray)
                 } else {
                     Style::default()
