@@ -62,7 +62,7 @@ T21|x|maximize toggle: `<space>f` expands focused pane to full screen, toggle ba
 T22|x|pane focus: `e`/`q`/`r` keys switch focus to Explorer/Query/Results|T8
 T23|x|integration tests: test each adapter with real DB (SQLite file, PG/MySQL in Docker)|T3,T4,T5
 T24|x|INSERT mode cursor: render visible cursor via `frame.set_cursor()` in `render_query()`, handle scroll offset if text exceeds viewport|T9,V8
-T25|.|Explorer scroll: add `scroll_offset` to `ExplorerState`, viewport-aware rendering via `.skip().take()`, auto-adjust on selection change (mirror `ResultsState::adjust_scroll` pattern)|T16
+T25|x|Explorer scroll: add `scroll_offset` to `ExplorerState`, viewport-aware rendering via `.skip().take()`, auto-adjust on selection change (mirror `ResultsState::adjust_scroll` pattern)|T16
 T26|.|Autocomplete word replace: on Tab accept, delete current word prefix before inserting suggestion. Reuse `current_word_prefix()` length. Add `delete_backwards(n)` to `EditorBuffer`|T19,V7
 
 ## §B — Bug Log

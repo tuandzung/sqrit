@@ -12,9 +12,7 @@ fn port_reachable(host: &str, port: u16) -> bool {
     addr.to_socket_addrs()
         .ok()
         .and_then(|mut addrs| addrs.next())
-        .map_or(false, |addr| {
-            TcpStream::connect_timeout(&addr, Duration::from_millis(500)).is_ok()
-        })
+        .is_some_and(|addr| TcpStream::connect_timeout(&addr, Duration::from_millis(500)).is_ok())
 }
 
 fn unique_table(label: &str) -> String {

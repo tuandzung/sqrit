@@ -311,7 +311,7 @@ impl App {
         Ok(())
     }
 
-    fn render(&self, frame: &mut ratatui::Frame) {
+    fn render(&mut self, frame: &mut ratatui::Frame) {
         let area = frame.area();
         match self.mode {
             Mode::Picker => self.render_picker(frame, area),
@@ -319,7 +319,7 @@ impl App {
         }
     }
 
-    fn render_main(&self, frame: &mut ratatui::Frame, area: Rect) {
+    fn render_main(&mut self, frame: &mut ratatui::Frame, area: Rect) {
         let status_height = 1u16;
         let main_height = area.height.saturating_sub(status_height);
 
@@ -370,7 +370,7 @@ impl App {
         frame.render_widget(Paragraph::new(status_text), status_area);
     }
 
-    fn render_explorer(&self, frame: &mut ratatui::Frame, area: Rect) {
+    fn render_explorer(&mut self, frame: &mut ratatui::Frame, area: Rect) {
         let border = self.border_style(FocusedPane::Explorer);
         let block = Block::default()
             .title(" Explorer ")
@@ -379,10 +379,18 @@ impl App {
         let inner = block.inner(area);
         frame.render_widget(block, area);
 
+        self.explorer_state.visible_rows = inner.height as usize;
+        self.explorer_state.adjust_scroll();
+
         let items = self.explorer_state.items();
+        let scroll_offset = self.explorer_state.scroll_offset;
+        let visible_rows = self.explorer_state.visible_rows;
+        let selected = self.explorer_state.selected;
         let lines: Vec<Line<'_>> = items
             .iter()
             .enumerate()
+            .skip(scroll_offset)
+            .take(visible_rows)
             .map(|(i, item)| {
                 let display = match item {
                     crate::explorer::TreeItem::Table { name, expanded } => {
@@ -404,7 +412,7 @@ impl App {
                         format!("  {} ({})", name, data_type)
                     }
                 };
-                let style = if i == self.explorer_state.selected {
+                let style = if i == selected {
                     Style::default().bg(Color::DarkGray)
                 } else {
                     Style::default()

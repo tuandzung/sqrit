@@ -15,9 +15,7 @@ fn mysql_available() -> bool {
         .to_socket_addrs()
         .ok()
         .and_then(|mut a| a.next())
-        .map_or(false, |a| {
-            TcpStream::connect_timeout(&a, Duration::from_millis(500)).is_ok()
-        })
+        .is_some_and(|a| TcpStream::connect_timeout(&a, Duration::from_millis(500)).is_ok())
 }
 
 fn unique_table(test_name: &str) -> String {

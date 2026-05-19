@@ -126,3 +126,102 @@ fn enter_toggles_expand() {
     let items = app.explorer_state.items();
     assert_eq!(items.len(), 4); // users expanded (2 cols) + orders
 }
+
+// T25 #1: initial scroll offset is 0, default visible_rows > 0
+#[test]
+fn scroll_default_zero() {
+    let state = ExplorerState::new();
+    assert_eq!(state.scroll_offset, 0);
+    assert!(state.visible_rows > 0);
+}
+
+fn large_schema(n: usize) -> SchemaInfo {
+    SchemaInfo {
+        tables: (0..n)
+            .map(|i| TableInfo {
+                name: format!("t{}", i),
+                columns: vec![],
+            })
+            .collect(),
+        views: vec![],
+    }
+}
+
+// T25 #2: move_down past viewport scrolls offset forward
+#[test]
+fn scroll_advances_past_viewport() {
+    let mut state = ExplorerState::new();
+    state.schema = Some(large_schema(30));
+    state.visible_rows = 10;
+
+    for _ in 0..9 {
+        state.move_down();
+    }
+    // selected = 9 (last visible row), still within viewport
+    assert_eq!(state.selected, 9);
+    assert_eq!(state.scroll_offset, 0);
+
+    state.move_down();
+    // selected = 10, scroll forward by 1
+    assert_eq!(state.selected, 10);
+    assert_eq!(state.scroll_offset, 1);
+
+    state.move_down();
+    assert_eq!(state.selected, 11);
+    assert_eq!(state.scroll_offset, 2);
+}
+
+// T25 #3: move_up back into viewport keeps scroll, going above scrolls back
+#[test]
+fn scroll_reverses_on_move_up() {
+    let mut state = ExplorerState::new();
+    state.schema = Some(large_schema(30));
+    state.visible_rows = 10;
+
+    for _ in 0..15 {
+        state.move_down();
+    }
+    assert_eq!(state.selected, 15);
+    assert_eq!(state.scroll_offset, 6); // 15 - 10 + 1
+
+    // move up within viewport — no scroll change
+    state.move_up();
+    assert_eq!(state.selected, 14);
+    assert_eq!(state.scroll_offset, 6);
+
+    // move up to top of viewport
+    for _ in 0..8 {
+        state.move_up();
+    }
+    assert_eq!(state.selected, 6);
+    assert_eq!(state.scroll_offset, 6);
+
+    // one more — scroll up
+    state.move_up();
+    assert_eq!(state.selected, 5);
+    assert_eq!(state.scroll_offset, 5);
+}
+
+// T25 #4: adjust_scroll clamps when selection drops below viewport (e.g., collapse)
+#[test]
+fn adjust_scroll_clamps_after_external_selection_change() {
+    let mut state = ExplorerState::new();
+    state.schema = Some(large_schema(30));
+    state.visible_rows = 10;
+    state.scroll_offset = 15;
+    state.selected = 3;
+
+    state.adjust_scroll();
+    assert_eq!(state.scroll_offset, 3);
+}
+
+// T25 #5: zero visible_rows does not panic
+#[test]
+fn adjust_scroll_zero_viewport_no_panic() {
+    let mut state = ExplorerState::new();
+    state.schema = Some(large_schema(5));
+    state.visible_rows = 0;
+    state.selected = 2;
+    state.adjust_scroll();
+    assert_eq!(state.scroll_offset, 2);
+}

@@ -24,16 +24,42 @@ pub enum TreeItem {
     },
 }
 
-#[derive(Default)]
 pub struct ExplorerState {
     pub schema: Option<SchemaInfo>,
     pub expanded: HashSet<String>,
     pub selected: usize,
+    pub scroll_offset: usize,
+    pub visible_rows: usize,
+}
+
+impl Default for ExplorerState {
+    fn default() -> Self {
+        Self {
+            schema: None,
+            expanded: HashSet::new(),
+            selected: 0,
+            scroll_offset: 0,
+            visible_rows: 20,
+        }
+    }
 }
 
 impl ExplorerState {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn adjust_scroll(&mut self) {
+        if self.visible_rows == 0 {
+            self.scroll_offset = self.selected;
+            return;
+        }
+        let bottom = self.scroll_offset + self.visible_rows;
+        if self.selected >= bottom {
+            self.scroll_offset = self.selected - self.visible_rows + 1;
+        } else if self.selected < self.scroll_offset {
+            self.scroll_offset = self.selected;
+        }
     }
 
     pub fn items(&self) -> Vec<TreeItem> {
@@ -88,11 +114,13 @@ impl ExplorerState {
         if len > 0 && self.selected + 1 < len {
             self.selected += 1;
         }
+        self.adjust_scroll();
     }
 
     pub fn move_up(&mut self) {
         if self.selected > 0 {
             self.selected -= 1;
         }
+        self.adjust_scroll();
     }
 }
