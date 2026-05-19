@@ -49,16 +49,45 @@ impl ExplorerState {
         Self::default()
     }
 
+    /// Sync viewport size and reconcile `selected`/`scroll_offset` against the
+    /// current item count. Call before rendering so layout-driven state lives
+    /// outside the render path.
+    pub fn set_viewport(&mut self, visible_rows: usize) {
+        self.visible_rows = visible_rows;
+        self.clamp_selection();
+        self.adjust_scroll();
+    }
+
+    fn clamp_selection(&mut self) {
+        let len = self.items().len();
+        if len == 0 {
+            self.selected = 0;
+            self.scroll_offset = 0;
+            return;
+        }
+        if self.selected >= len {
+            self.selected = len - 1;
+        }
+    }
+
     pub fn adjust_scroll(&mut self) {
+        let len = self.items().len();
+        let max_scroll = len.saturating_sub(self.visible_rows);
+
         if self.visible_rows == 0 {
             self.scroll_offset = self.selected;
             return;
         }
-        let bottom = self.scroll_offset + self.visible_rows;
+
+        let bottom = self.scroll_offset.saturating_add(self.visible_rows);
         if self.selected >= bottom {
-            self.scroll_offset = self.selected - self.visible_rows + 1;
+            self.scroll_offset = self.selected + 1 - self.visible_rows;
         } else if self.selected < self.scroll_offset {
             self.scroll_offset = self.selected;
+        }
+
+        if self.scroll_offset > max_scroll {
+            self.scroll_offset = max_scroll;
         }
     }
 

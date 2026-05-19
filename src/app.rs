@@ -336,7 +336,10 @@ impl App {
         // Maximized: render only focused pane full-screen
         if let Some(maximized_pane) = self.maximized {
             match maximized_pane {
-                FocusedPane::Explorer => self.render_explorer(frame, main_area),
+                FocusedPane::Explorer => {
+                    self.prepare_explorer_viewport(main_area);
+                    self.render_explorer(frame, main_area);
+                }
                 FocusedPane::Query => self.render_query(frame, main_area),
                 FocusedPane::Results => self.render_results(frame, main_area),
             }
@@ -362,6 +365,7 @@ impl App {
         let query_area = right_chunks[0];
         let results_area = right_chunks[1];
 
+        self.prepare_explorer_viewport(explorer_area);
         self.render_explorer(frame, explorer_area);
         self.render_query(frame, query_area);
         self.render_results(frame, results_area);
@@ -370,7 +374,12 @@ impl App {
         frame.render_widget(Paragraph::new(status_text), status_area);
     }
 
-    fn render_explorer(&mut self, frame: &mut ratatui::Frame, area: Rect) {
+    fn prepare_explorer_viewport(&mut self, area: Rect) {
+        let inner = Block::default().borders(Borders::ALL).inner(area);
+        self.explorer_state.set_viewport(inner.height as usize);
+    }
+
+    fn render_explorer(&self, frame: &mut ratatui::Frame, area: Rect) {
         let border = self.border_style(FocusedPane::Explorer);
         let block = Block::default()
             .title(" Explorer ")
@@ -378,9 +387,6 @@ impl App {
             .border_style(border);
         let inner = block.inner(area);
         frame.render_widget(block, area);
-
-        self.explorer_state.visible_rows = inner.height as usize;
-        self.explorer_state.adjust_scroll();
 
         let items = self.explorer_state.items();
         let scroll_offset = self.explorer_state.scroll_offset;

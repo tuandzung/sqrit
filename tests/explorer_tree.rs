@@ -225,3 +225,55 @@ fn adjust_scroll_zero_viewport_no_panic() {
     state.adjust_scroll();
     assert_eq!(state.scroll_offset, 2);
 }
+
+// T25 #6: adjust_scroll clamps scroll_offset to max_scroll (len - visible_rows)
+#[test]
+fn adjust_scroll_clamps_to_max_scroll() {
+    let mut state = ExplorerState::new();
+    state.schema = Some(large_schema(30));
+    state.visible_rows = 10;
+    state.scroll_offset = 25; // past max_scroll = 30 - 10 = 20
+    state.selected = 22;
+    state.adjust_scroll();
+    assert!(state.scroll_offset <= 20);
+}
+
+// T25 #7: set_viewport clamps selected when item count shrinks below it
+#[test]
+fn set_viewport_clamps_selected_on_shrink() {
+    let mut state = ExplorerState::new();
+    state.schema = Some(large_schema(30));
+    state.visible_rows = 10;
+    state.selected = 25;
+    state.adjust_scroll();
+
+    // Schema shrinks to 5 items (e.g., reload)
+    state.schema = Some(large_schema(5));
+    state.set_viewport(10);
+
+    assert_eq!(state.selected, 4); // clamped to len - 1
+    assert_eq!(state.scroll_offset, 0); // len <= visible_rows
+}
+
+// T25 #8: set_viewport on empty schema resets selected and scroll_offset
+#[test]
+fn set_viewport_empty_resets_state() {
+    let mut state = ExplorerState::new();
+    state.selected = 7;
+    state.scroll_offset = 3;
+    state.set_viewport(10);
+    assert_eq!(state.selected, 0);
+    assert_eq!(state.scroll_offset, 0);
+}
+
+// T25 #9: adjust_scroll with usize::MAX scroll_offset does not overflow
+#[test]
+fn adjust_scroll_saturates_on_overflow() {
+    let mut state = ExplorerState::new();
+    state.schema = Some(large_schema(30));
+    state.visible_rows = 10;
+    state.scroll_offset = usize::MAX;
+    state.selected = 5;
+    state.adjust_scroll(); // must not panic
+    assert!(state.scroll_offset <= 20);
+}
