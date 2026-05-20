@@ -75,7 +75,7 @@ Press `v` on a selected cell in Results to open a read-only modal with the full 
 Per-connection ring of executed queries stored at `~/.sqrit/history/<connection-name>.jsonl` (append-only, capped at 500 entries, rotated on overflow). Each entry: `ts` (ISO 8601 UTC), `sql`, `duration_ms`, `status` (`ok`/`error`), `rows`. Accessed via `<space>h`, which opens a picker modal: newest-first, type to substring-filter on the SQL text, Enter pastes the selected query into the editor (never auto-executes — destructive-query safety), Esc cancels.
 
 ### Filter (v0.2)
-Client-side fuzzy row filter on the **current results page**. `/` in Results mode opens a filter prompt at the bottom of the pane; live-filters (case-insensitive substring across all columns) as the user types. Enter persists the filter — subsequent `PgDn`/`PgUp` page loads re-apply it to each new page. Esc cancels and clears. Filter operates only on rows already loaded (respects invariant V6 — never the full result set in memory). To search outside the current page, navigate to it first.
+Client-side **substring** row filter on the **current results page**. `/` in Results mode opens a filter prompt at the bottom of the pane; live-filters (case-insensitive substring match across all columns — no fuzzy scoring, no subsequence matching) as the user types. Enter persists the filter — subsequent `PgDn`/`PgUp` page loads re-apply it to each new page. Esc cancels and clears. Filter operates only on rows already loaded (respects invariant V6 — never the full result set in memory). To search outside the current page, navigate to it first. Fuzzy / subsequence matching is deferred to v0.3+.
 
 ### Cancel (v0.2)
 DB-level cancel of a running query, exposed as `async fn cancel(&self)` on the `Database` trait. Each adapter uses its native mechanism: SQLite via `rusqlite`'s `InterruptHandle`; PostgreSQL via `SELECT pg_cancel_backend($pid)` executed on a side connection (PID captured at connect); MySQL via `KILL QUERY <conn_id>` similarly. Triggered by `<space>z`. Stale results from the cancelled query are discarded by the existing `query_id` guard in `App::drain_async_results`. See [ADR 6](docs/adr/0006-per-adapter-query-cancel.md).
@@ -104,7 +104,7 @@ Power-user polish, no new system dependencies, no CLI mode. Tracked by milestone
 - **Help overlay** — `?` toggles a modal of the active mode's keybindings, sourced from each handler's `bindings()` method. Requires the trait-based dispatch refinement in the [ADR 3 addendum](docs/adr/0003-mode-dispatch-keybinding.md).
 - **Cell viewer** — `v` opens a read-only modal with `Tab` raw↔formatted toggle (JSON / date / hex).
 - **Query history** — per-connection JSONL ring at `~/.sqrit/history/<conn>.jsonl`, 500 entries, `<space>h` picker pastes into editor (never auto-executes).
-- **Fuzzy row filter** — `/` triggers client-side filter on the current results page; respects V6.
+- **Row filter** — `/` triggers a client-side, case-insensitive substring filter on the current results page; respects V6. Fuzzy scoring deferred.
 - **Cancel running query** — `<space>z` invokes per-adapter native cancel via a new `Database::cancel()` trait method. See ADR 6.
 
 ## Deferred to v0.3+
