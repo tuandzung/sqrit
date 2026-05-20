@@ -161,7 +161,7 @@ user/password `sqrit/sqrit`, database `sqrit_test`. See
 
 Single `App` struct owns all state. Three core layers:
 
-1. **Database** (`src/db/`) — `Database` trait with adapters per backend. All DB ops go through this trait. Async via `Tokio::spawn` + `mpsc` channel — UI never blocks on DB calls.
+1. **Database** (`src/db/`) — `Database` trait with adapters per backend. All DB ops go through this trait. Async via `tokio::spawn` + `mpsc` channel — UI never blocks on DB calls.
 
 2. **Modes** (`src/mode.rs` + `src/mode/`) — `Mode` enum dispatches `handle_key()` to mode handlers. Modes: Picker, Explorer, QueryNormal, QueryInsert, Results, Command.
 
