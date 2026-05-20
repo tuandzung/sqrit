@@ -167,4 +167,69 @@ fn space_t_opens_theme_picker_and_captures_original() {
     let picker = app.theme_picker.as_ref().expect("picker should be open");
     assert_eq!(picker.original_theme.name, "nord");
     assert_eq!(picker.available.len(), 5, "should list 5 bundled themes");
+    assert_eq!(
+        picker.current_name(),
+        Some("nord"),
+        "selection should snap to the active theme on entry, not index 0"
+    );
+}
+
+#[test]
+fn entry_selection_falls_back_to_zero_when_active_theme_not_in_list() {
+    let tmp = tempdir().unwrap();
+    ensure_bundled(tmp.path()).unwrap();
+
+    let mut app = common::test_app();
+    app.themes_dir = tmp.path().to_path_buf();
+    // Active theme name doesn't match any file in themes_dir
+    app.theme = Theme::default_theme();
+
+    app.handle_key_event(key(KeyCode::Char(' ')));
+    app.handle_key_event(key(KeyCode::Char('t')));
+
+    let picker = app.theme_picker.as_ref().unwrap();
+    assert_eq!(
+        picker.selected, 0,
+        "when active theme missing from list, snap to first entry"
+    );
+}
+
+#[test]
+fn preview_failure_surfaces_warning_and_keeps_default_theme() {
+    let tmp = tempdir().unwrap();
+    ensure_bundled(tmp.path()).unwrap();
+    // Inject a malformed theme file. Sorted alphabetically it lands at index 0
+    // ("bad" < "catppuccin"), so the picker can navigate to it deterministically.
+    std::fs::write(tmp.path().join("bad.toml"), "this is not valid = = toml").unwrap();
+
+    let mut app = common::test_app();
+    app.themes_dir = tmp.path().to_path_buf();
+    app.theme = Theme::parse(include_str!("../themes/nord.toml")).unwrap();
+    app.mode = Mode::QueryNormal;
+    app.status_message.clear();
+
+    app.handle_key_event(key(KeyCode::Char(' ')));
+    app.handle_key_event(key(KeyCode::Char('t')));
+    // Picker opens with selection on "nord" (index 4 after sort: bad,
+    // catppuccin, gruvbox, nord, rose-pine, tokyo-night). Walk up to "bad".
+    for _ in 0..4 {
+        app.handle_key_event(key(KeyCode::Char('k')));
+    }
+
+    let picker = app.theme_picker.as_ref().expect("picker still open");
+    assert_eq!(
+        picker.current_name(),
+        Some("bad"),
+        "navigated to malformed entry"
+    );
+    assert_eq!(
+        app.theme.name,
+        Theme::default_theme().name,
+        "preview falls back to the hardcoded default on parse failure"
+    );
+    assert!(
+        app.status_message.contains("bad"),
+        "status should name the failed theme, got: {}",
+        app.status_message
+    );
 }

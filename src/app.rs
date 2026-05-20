@@ -97,12 +97,10 @@ impl App {
 
         // Theming bootstrap: ensure ~/.sqrit/themes/ exists with the bundled defaults,
         // then load the active theme named in ~/.sqrit/config.toml (or default if absent).
-        let themes_dir = dirs::home_dir()
-            .map(|h| h.join(".sqrit").join("themes"))
-            .unwrap_or_default();
-        let app_config_path = dirs::home_dir()
-            .map(|h| h.join(".sqrit").join("config.toml"))
-            .unwrap_or_default();
+        // Paths are anchored at `~/.sqrit/` and error out if `$HOME` is unresolvable
+        // rather than silently writing under the current working directory.
+        let themes_dir = crate::config::AppConfig::themes_dir()?;
+        let app_config_path = crate::config::AppConfig::config_path()?;
         let _ = crate::theme::ensure_bundled(&themes_dir);
         let app_config = crate::config::AppConfig::load_from(&app_config_path).unwrap_or_default();
         let (theme, theme_warning) =

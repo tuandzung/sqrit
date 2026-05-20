@@ -13,11 +13,24 @@ pub struct AppConfig {
 }
 
 impl AppConfig {
-    pub fn config_path() -> anyhow::Result<PathBuf> {
+    /// Root sqrit config directory (`~/.sqrit/`). Errors if `$HOME` is unresolvable
+    /// rather than silently falling back to a relative path (CWD).
+    pub fn sqrit_dir() -> anyhow::Result<PathBuf> {
         let home = dirs::home_dir().ok_or_else(|| anyhow::anyhow!("no home directory"))?;
         let dir = home.join(".sqrit");
         std::fs::create_dir_all(&dir)?;
-        Ok(dir.join("config.toml"))
+        Ok(dir)
+    }
+
+    pub fn config_path() -> anyhow::Result<PathBuf> {
+        Ok(Self::sqrit_dir()?.join("config.toml"))
+    }
+
+    /// Directory holding per-theme TOML files (`~/.sqrit/themes/`).
+    pub fn themes_dir() -> anyhow::Result<PathBuf> {
+        let dir = Self::sqrit_dir()?.join("themes");
+        std::fs::create_dir_all(&dir)?;
+        Ok(dir)
     }
 
     pub fn load_from(path: &Path) -> anyhow::Result<Self> {

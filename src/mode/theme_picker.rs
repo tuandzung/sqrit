@@ -88,9 +88,20 @@ fn apply(app: &mut App) {
     let Some(picker) = app.theme_picker.take() else {
         return;
     };
-    if let Some(name) = picker.current_name() {
-        let mut cfg = crate::config::AppConfig::load_from(&app.app_config_path).unwrap_or_default();
-        if let Err(e) = cfg.set_theme_at(name, &app.app_config_path) {
+    let Some(name) = picker.current_name().map(str::to_string) else {
+        app.mode = picker.origin_mode;
+        return;
+    };
+    let mut cfg = crate::config::AppConfig::load_from(&app.app_config_path).unwrap_or_default();
+    match cfg.set_theme_at(&name, &app.app_config_path) {
+        Ok(()) => {
+            app.status_message = format!("theme '{}' saved", name);
+        }
+        Err(e) => {
+            // Persistence failed; revert the previewed theme so the in-memory
+            // state matches what's on disk. Surfacing the failure prevents the
+            // "looks saved but isn't" trap.
+            app.theme = picker.original_theme.clone();
             app.status_message = format!("failed to persist theme '{}': {}", name, e);
         }
     }
@@ -98,20 +109,20 @@ fn apply(app: &mut App) {
 }
 
 /// Load and apply the picker's currently selected theme to `app.theme`.
-/// On parse failure, fall back to the default and surface a status warning.
+/// On load failure, `load_active` already returns `Theme::default_theme()`, so
+/// `app.theme` becomes the safe fallback; we just forward its warning to the
+/// status bar verbatim.
 fn preview_current(app: &mut App) {
-    let (name, origin_name) = match app.theme_picker.as_ref() {
-        Some(p) => (
-            p.current_name().map(str::to_string),
-            p.original_theme.name.clone(),
-        ),
-        None => return,
+    let Some(name) = app
+        .theme_picker
+        .as_ref()
+        .and_then(|p| p.current_name().map(str::to_string))
+    else {
+        return;
     };
-    let Some(name) = name else { return };
     let (theme, warning) = crate::theme::load_active(&app.themes_dir, Some(&name));
     app.theme = theme;
     if let Some(w) = warning {
-        app.status_message = format!("{} (preview reverted toward default)", w);
-        let _ = origin_name;
+        app.status_message = w;
     }
 }
