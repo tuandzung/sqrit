@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - Autocomplete Tab accept now replaces the typed word prefix instead of appending the suggestion to it (e.g. typing `SEL` + Tab on `SELECT` now yields `SELECT`, not `SELSELECT`). New `EditorBuffer::delete_backwards(n)` removes the prefix in a single undoable step (T26).
+- MySQL adapter: columns declared `BOOLEAN` / `BOOL` now decode to `Value::Boolean` instead of rendering the literal `<unsupported mysql type: BOOLEAN>`. sqlx-mysql reports `"BOOLEAN"` as the type name for `TINYINT(1)` columns, which previously fell through to the unsupported-type branch (#27).
 
 ## [0.1.0] - 2026-05-14
 

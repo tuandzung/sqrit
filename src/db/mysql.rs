@@ -11,6 +11,9 @@ fn mysql_row_to_value(row: &sqlx::mysql::MySqlRow, i: usize) -> Value {
             Value::Null
         } else {
             match raw.type_info().name() {
+                // sqlx-mysql reports "BOOLEAN" for columns declared BOOLEAN / BOOL
+                // (stored on disk as TINYINT(1)). Must match before "TINYINT".
+                "BOOLEAN" => Value::Boolean(row.get::<bool, _>(i)),
                 "TINYINT" | "SMALLINT" | "INT" | "MEDIUMINT" | "BIGINT" => {
                     Value::Integer(row.get::<i64, _>(i))
                 }
