@@ -1,0 +1,14 @@
+name = "nord"
+
+[colors]
+bg = "#2e3440"
+fg = "#d8dee9"
+border_focused = "#88c0d0"
+border_unfocused = "#4c566a"
+selection_bg = "#434c5e"
+keyword = "#81a1c1"
+string = "#a3be8c"
+comment = "#616e88"
+number = "#b48ead"
+type = "#8fbcbb"
+error = "#bf616a"
