@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - INSERT mode now renders a visible cursor in the query editor via `frame.set_cursor()`, honoring viewport scroll for long lines (V8, T24).
 - Explorer pane is now viewport-aware: `ExplorerState` tracks `scroll_offset`, rendering uses `.skip().take()`, and the offset auto-adjusts when the selection moves off-screen — mirrors the `ResultsState::adjust_scroll` pattern (T25).
 - Vim-style command mode: `:` from QueryNormal / Explorer / Results enters command mode; `:q`, `:quit`, `:q!`, `:quit!` + Enter quit the app. Esc cancels and restores the previous mode. Unknown commands surface as a status message.
+- Local integration runner: `justfile` + `docker-compose.yml` at the repo root expose `just it`, `just it-pg`, `just it-mysql`, `just db-up`/`db-down`, plus dev shortcuts (`just check`, `just fmt`, `just lint`). Ports/credentials match CI Services. See `docs/adr/0004-local-integration-runner.md`.
 
 ### Fixed
 
