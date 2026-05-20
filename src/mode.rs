@@ -3,6 +3,7 @@ pub mod editor;
 pub mod explorer;
 pub mod picker;
 pub mod results;
+pub mod theme_picker;
 
 use crossterm::event::KeyEvent;
 
@@ -16,6 +17,7 @@ pub enum Mode {
     QueryInsert,
     Results,
     Command,
+    ThemePicker,
 }
 
 impl Mode {
@@ -27,6 +29,7 @@ impl Mode {
             Mode::Explorer => explorer::handle_key(key, app),
             Mode::Results => results::handle_key(key, app),
             Mode::Command => command::handle_key(key, app),
+            Mode::ThemePicker => theme_picker::handle_key(key, app),
         }
     }
 
@@ -38,6 +41,7 @@ impl Mode {
             Mode::QueryInsert => "INSERT",
             Mode::Results => "RESULTS",
             Mode::Command => "COMMAND",
+            Mode::ThemePicker => "THEME",
         }
     }
 }

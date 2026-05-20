@@ -48,6 +48,10 @@ pub fn test_app() -> App {
         query_id: 0,
         command_buffer: String::new(),
         command_origin: None,
+        theme: sqrit::theme::Theme::default_theme(),
+        themes_dir: std::path::PathBuf::new(),
+        theme_picker: None,
+        app_config_path: std::path::PathBuf::new(),
     }
 }
 

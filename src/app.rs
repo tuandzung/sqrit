@@ -7,7 +7,7 @@ use crossterm::terminal::{
 };
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Cell, Clear, Paragraph, Row as TableRow, Table};
 use ratatui::Terminal;
@@ -84,12 +84,32 @@ pub struct App {
     pub query_id: u64,
     pub command_buffer: String,
     pub command_origin: Option<Mode>,
+    pub theme: crate::theme::Theme,
+    pub themes_dir: std::path::PathBuf,
+    pub theme_picker: Option<crate::mode::theme_picker::ThemePickerState>,
+    pub app_config_path: std::path::PathBuf,
 }
 
 impl App {
     pub fn new() -> anyhow::Result<Self> {
         let config = Config::load()?;
         let (async_tx, async_rx) = mpsc::unbounded_channel();
+
+        // Theming bootstrap: ensure ~/.sqrit/themes/ exists with the bundled defaults,
+        // then load the active theme named in ~/.sqrit/config.toml (or default if absent).
+        // Paths are anchored at `~/.sqrit/` and error out if `$HOME` is unresolvable
+        // rather than silently writing under the current working directory.
+        let themes_dir = crate::config::AppConfig::themes_dir()?;
+        let app_config_path = crate::config::AppConfig::config_path()?;
+        let _ = crate::theme::ensure_bundled(&themes_dir);
+        let app_config = crate::config::AppConfig::load_from(&app_config_path).unwrap_or_default();
+        let (theme, theme_warning) =
+            crate::theme::load_active(&themes_dir, app_config.theme.as_deref());
+        let mut status_message = String::new();
+        if let Some(w) = theme_warning {
+            status_message = w;
+        }
+
         Ok(Self {
             mode: Mode::Picker,
             should_quit: false,
@@ -99,7 +119,7 @@ impl App {
             focused_pane: FocusedPane::Query,
             editor: EditorBuffer::new(),
             normal_state: NormalState::new(),
-            status_message: String::new(),
+            status_message,
             results: None,
             query_status: QueryStatus::Idle,
             pending_query: None,
@@ -117,6 +137,10 @@ impl App {
             query_id: 0,
             command_buffer: String::new(),
             command_origin: None,
+            theme,
+            themes_dir,
+            theme_picker: None,
+            app_config_path,
         })
     }
 
@@ -178,14 +202,25 @@ impl App {
     pub fn handle_key_event(&mut self, key: crossterm::event::KeyEvent) {
         use crossterm::event::KeyCode;
 
-        // Global space prefix: space+f toggles maximize (Explorer, QueryNormal, Results)
+        // Global space-prefix command palette (see CONTEXT.md "Command Palette").
+        // Active in non-Insert, non-Picker modes. QueryInsert keeps `<space>` as
+        // a literal char; Picker types `<space>` into its filter.
         if self.pending_space {
             self.pending_space = false;
-            if key.code == KeyCode::Char('f') {
-                self.toggle_maximize();
-                return;
+            match key.code {
+                KeyCode::Char('f') => {
+                    self.toggle_maximize();
+                    return;
+                }
+                KeyCode::Char('t') => {
+                    let origin = self.mode;
+                    crate::mode::theme_picker::enter(self, origin);
+                    return;
+                }
+                _ => {
+                    // Unknown space combo — pass through to mode handler
+                }
             }
-            // Unknown space combo — pass through to mode handler
         }
 
         let mode = self.mode;
@@ -423,7 +458,7 @@ impl App {
                     }
                 };
                 let style = if i == selected {
-                    Style::default().bg(Color::DarkGray)
+                    Style::default().bg(self.theme.selection_bg)
                 } else {
                     Style::default()
                 };
@@ -512,7 +547,9 @@ impl App {
                         .enumerate()
                         .map(|(i, s)| {
                             let style = if i == self.autocomplete.selected_index() {
-                                Style::default().bg(Color::Cyan).fg(Color::Black)
+                                Style::default()
+                                    .bg(self.theme.border_focused)
+                                    .fg(self.theme.bg)
                             } else {
                                 Style::default()
                             };
@@ -521,7 +558,7 @@ impl App {
                         .collect();
                     let popup_block = Block::default()
                         .borders(Borders::ALL)
-                        .border_style(Style::default().fg(Color::Cyan));
+                        .border_style(Style::default().fg(self.theme.border_focused));
                     let popup = Paragraph::new(items).block(popup_block);
                     frame.render_widget(popup, popup_area);
                 }
@@ -543,7 +580,9 @@ impl App {
                 let header_cells: Vec<Cell> = result
                     .columns
                     .iter()
-                    .map(|c| Cell::from(c.as_str()).style(Style::default().fg(Color::Cyan)))
+                    .map(|c| {
+                        Cell::from(c.as_str()).style(Style::default().fg(self.theme.border_focused))
+                    })
                     .collect();
                 let header = TableRow::new(header_cells)
                     .style(Style::default().add_modifier(Modifier::BOLD));
@@ -566,7 +605,7 @@ impl App {
                         let is_selected_row =
                             i + self.results_state.scroll_row == self.results_state.selected_row;
                         let style = if is_selected_row {
-                            Style::default().bg(Color::DarkGray)
+                            Style::default().bg(self.theme.selection_bg)
                         } else {
                             Style::default()
                         };
@@ -599,9 +638,9 @@ impl App {
             None => self.focused_pane == pane,
         };
         if is_focused {
-            ratatui::style::Style::default().fg(ratatui::style::Color::Cyan)
+            ratatui::style::Style::default().fg(self.theme.border_focused)
         } else {
-            ratatui::style::Style::default()
+            ratatui::style::Style::default().fg(self.theme.border_unfocused)
         }
     }
 
@@ -632,18 +671,18 @@ impl App {
         format!(" {} | {} | {}", mode_str, conn, status)
     }
 
-    fn token_style(kind: &TokenKind) -> Style {
+    fn token_style(&self, kind: &TokenKind) -> Style {
         match kind {
             TokenKind::Keyword => Style::default()
-                .fg(Color::Blue)
+                .fg(self.theme.keyword)
                 .add_modifier(Modifier::BOLD),
-            TokenKind::Type => Style::default().fg(Color::Magenta),
-            TokenKind::String => Style::default().fg(Color::Green),
-            TokenKind::Comment => Style::default().fg(Color::DarkGray),
-            TokenKind::Number => Style::default().fg(Color::Yellow),
-            TokenKind::Operator => Style::default().fg(Color::Cyan),
-            TokenKind::Punctuation => Style::default().fg(Color::White),
-            TokenKind::Identifier => Style::default().fg(Color::White),
+            TokenKind::Type => Style::default().fg(self.theme.type_),
+            TokenKind::String => Style::default().fg(self.theme.string),
+            TokenKind::Comment => Style::default().fg(self.theme.comment),
+            TokenKind::Number => Style::default().fg(self.theme.number),
+            TokenKind::Operator => Style::default().fg(self.theme.border_focused),
+            TokenKind::Punctuation => Style::default().fg(self.theme.fg),
+            TokenKind::Identifier => Style::default().fg(self.theme.fg),
             TokenKind::Whitespace => Style::default(),
         }
     }
@@ -662,7 +701,7 @@ impl App {
                 if !line_text.is_empty() {
                     current_spans.push(Span::styled(
                         line_text.to_string(),
-                        Self::token_style(&token.kind),
+                        self.token_style(&token.kind),
                     ));
                 }
             }
@@ -708,7 +747,7 @@ impl App {
             .block(Block::default().title(title).borders(Borders::ALL))
             .highlight_style(
                 ratatui::style::Style::default()
-                    .bg(ratatui::style::Color::DarkGray)
+                    .bg(self.theme.selection_bg)
                     .add_modifier(ratatui::style::Modifier::BOLD),
             );
 

@@ -9,6 +9,7 @@ pub mod mode;
 pub mod picker;
 pub mod results;
 pub mod sql;
+pub mod theme;
 
 use app::App;
 
