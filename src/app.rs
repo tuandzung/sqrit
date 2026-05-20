@@ -350,12 +350,77 @@ impl App {
         Ok(())
     }
 
-    fn render(&mut self, frame: &mut ratatui::Frame) {
+    pub fn render(&mut self, frame: &mut ratatui::Frame) {
         let area = frame.area();
         match self.mode {
             Mode::Picker => self.render_picker(frame, area),
             _ => self.render_main(frame, area),
         }
+        if self.mode == Mode::ThemePicker && self.theme_picker.is_some() {
+            self.render_theme_picker(frame, area);
+        }
+    }
+
+    /// Modal rect sized to fit the longest theme name plus borders/padding,
+    /// clamped to `area`. Centered. Pure — exposed for testability.
+    pub fn theme_picker_modal_rect(area: Rect, item_count: usize, max_name_len: usize) -> Rect {
+        let title_len = " Themes ".len();
+        let content_width = max_name_len.max(title_len) as u16;
+        let desired_w = content_width.saturating_add(4); // borders + 1ch padding each side
+        let desired_h = (item_count as u16).saturating_add(2); // borders
+        let w = desired_w.min(area.width);
+        let h = desired_h.min(area.height);
+        let x = area.x + area.width.saturating_sub(w) / 2;
+        let y = area.y + area.height.saturating_sub(h) / 2;
+        Rect {
+            x,
+            y,
+            width: w,
+            height: h,
+        }
+    }
+
+    fn render_theme_picker(&self, frame: &mut ratatui::Frame, area: Rect) {
+        let Some(picker) = self.theme_picker.as_ref() else {
+            return;
+        };
+        let max_name = picker
+            .available
+            .iter()
+            .map(|s| s.chars().count())
+            .max()
+            .unwrap_or(0);
+        let modal = Self::theme_picker_modal_rect(area, picker.available.len(), max_name);
+        if modal.width == 0 || modal.height == 0 {
+            return;
+        }
+        frame.render_widget(Clear, modal);
+
+        let block = Block::default()
+            .title(" Themes ")
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(self.theme.border_focused))
+            .style(Style::default().bg(self.theme.bg).fg(self.theme.fg));
+        let inner = block.inner(modal);
+        frame.render_widget(block, modal);
+
+        let lines: Vec<Line<'_>> = picker
+            .available
+            .iter()
+            .enumerate()
+            .take(inner.height as usize)
+            .map(|(i, name)| {
+                let style = if i == picker.selected {
+                    Style::default()
+                        .bg(self.theme.selection_bg)
+                        .fg(self.theme.fg)
+                } else {
+                    Style::default().fg(self.theme.fg)
+                };
+                Line::styled(name.clone(), style)
+            })
+            .collect();
+        frame.render_widget(Paragraph::new(lines), inner);
     }
 
     fn render_main(&mut self, frame: &mut ratatui::Frame, area: Rect) {
