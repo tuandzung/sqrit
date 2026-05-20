@@ -1,0 +1,33 @@
+# Local integration test stack. Mirrors .github/workflows/integration.yml.
+# See docs/adr/0004-local-integration-runner.md for rationale.
+services:
+  postgres:
+    image: postgres:16
+    container_name: sqrit-postgres
+    environment:
+      POSTGRES_USER: sqrit
+      POSTGRES_PASSWORD: sqrit
+      POSTGRES_DB: sqrit_test
+    ports:
+      - "15432:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "sqrit", "-d", "sqrit_test"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  mysql:
+    image: mysql:8
+    container_name: sqrit-mysql
+    environment:
+      MYSQL_USER: sqrit
+      MYSQL_PASSWORD: sqrit
+      MYSQL_DATABASE: sqrit_test
+      MYSQL_ROOT_PASSWORD: root
+    ports:
+      - "13306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-usqrit", "-psqrit"]
+      interval: 5s
+      timeout: 3s
+      retries: 10

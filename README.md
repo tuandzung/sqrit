@@ -125,12 +125,37 @@ cargo build --release
 
 ## Development
 
+Raw cargo:
+
 ```bash
 cargo test          # run all tests
 cargo test --test sqlite_adapter  # single test suite
 ```
 
-Spec-driven development. See `SPEC.md` for task status and invariants.
+### Local Integration Tests
+
+Postgres and MySQL adapter tests are `#[ignore]`d by default and require
+running databases. A `justfile` + `docker-compose.yml` at the repo root
+provide a one-command local runner.
+
+**Prereqs**: [Docker](https://docs.docker.com/engine/install/) (with
+`docker compose` v2) and [just](https://just.systems/man/en/chapter_4.html).
+
+```bash
+just              # list all recipes
+just it           # start postgres+mysql, run integration tests, leave containers up
+just it-clean     # one-shot: up, test, down (mirrors CI)
+just it-pg        # postgres adapter tests only
+just it-mysql     # mysql adapter tests only
+just it-sqlite    # sqlite adapter tests (no docker)
+just db-up        # start containers (idempotent)
+just db-down      # stop and wipe volumes
+just check        # fmt --check + clippy + unit tests (pre-push gate)
+```
+
+Local ports/credentials match CI: postgres on `15432`, mysql on `13306`,
+user/password `sqrit/sqrit`, database `sqrit_test`. See
+[ADR 4](docs/adr/0004-local-integration-runner.md) for design notes.
 
 ## Architecture
 
