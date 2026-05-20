@@ -282,6 +282,15 @@ fn delete_backwards_zero_noop() {
     assert_eq!(buf.cursor(), (0, 3));
 }
 
+// T26 #2b: delete_backwards at buffer start with n > 0 is noop (empty buffer)
+#[test]
+fn delete_backwards_at_buffer_start_noop() {
+    let mut buf = EditorBuffer::new();
+    buf.delete_backwards(10);
+    assert_eq!(buf.text(), "");
+    assert_eq!(buf.cursor(), (0, 0));
+}
+
 // T26 #3: delete_backwards clamps to cursor_col, does not cross line
 #[test]
 fn delete_backwards_clamps_to_line_start() {

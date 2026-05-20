@@ -135,6 +135,11 @@ fn tab_accept_replaces_prefix() {
         "SELECT",
         "Tab accept should replace 'SEL' with 'SELECT', not append"
     );
+    assert_eq!(
+        app.editor.cursor(),
+        (0, "SELECT".len()),
+        "cursor should land at end of inserted word"
+    );
 }
 
 // T26: Tab accept preserves text after the cursor
@@ -155,6 +160,11 @@ fn tab_accept_preserves_suffix() {
     app.handle_key_event(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
 
     assert_eq!(app.editor.text(), "SELECT foo");
+    assert_eq!(
+        app.editor.cursor(),
+        (0, "SELECT".len()),
+        "cursor should land between inserted word and preserved suffix"
+    );
 }
 
 // T26: Tab accept with empty prefix just inserts the word
@@ -168,6 +178,7 @@ fn tab_accept_empty_prefix_inserts_word() {
     app.handle_key_event(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
 
     assert_eq!(app.editor.text(), "SELECT");
+    assert_eq!(app.editor.cursor(), (0, "SELECT".len()));
 }
 
 #[test]
