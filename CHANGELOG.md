@@ -4,11 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.1.1] - 2026-05-20
+
+### Added
+
+- INSERT mode now renders a visible cursor in the query editor via `frame.set_cursor()`, honoring viewport scroll for long lines (V8, T24).
+- Explorer pane is now viewport-aware: `ExplorerState` tracks `scroll_offset`, rendering uses `.skip().take()`, and the offset auto-adjusts when the selection moves off-screen — mirrors the `ResultsState::adjust_scroll` pattern (T25).
 
 ### Fixed
 
-- Autocomplete Tab accept now replaces the typed word prefix instead of appending the suggestion to it (e.g. typing `SEL` + Tab on `SELECT` now yields `SELECT`, not `SELSELECT`). New `EditorBuffer::delete_backwards(n)` removes the prefix in a single undoable step.
+- Autocomplete Tab accept now replaces the typed word prefix instead of appending the suggestion to it (e.g. typing `SEL` + Tab on `SELECT` now yields `SELECT`, not `SELSELECT`). New `EditorBuffer::delete_backwards(n)` removes the prefix in a single undoable step (T26).
 
 ## [0.1.0] - 2026-05-14
 
