@@ -89,6 +89,9 @@ pub fn handle_key(key: KeyEvent, app: &mut App) {
             app.pending_space = true;
         }
 
+        // Command-line mode
+        KeyCode::Char(':') => crate::mode::command::enter(app, Mode::QueryNormal),
+
         _ => {}
     }
 }

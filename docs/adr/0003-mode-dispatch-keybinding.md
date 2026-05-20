@@ -22,3 +22,8 @@ Use a simple `Mode` enum. Each variant has its own `handle_key()` method. Main e
 - Cross-mode transitions (Normal → Insert, Explorer → Query) are explicit `match` arms in each handler.
 - No centralized "allowed actions" list — keybinding display in status bar must be derived from current mode.
 - Adding new modes requires extending the enum and adding a handler — straightforward but linear growth.
+- Transient modes that need to "return to caller" (e.g. Command mode invoked from Normal / Explorer / Results) store their origin on `App` (`command_origin: Option<Mode>`) and restore it on Esc or after execution. This is the lightweight alternative to a parent-chain state machine endorsed in the rationale.
+
+## Addendum — Command mode (2026-05-20)
+
+Vim-style command-line (`:q`, `:quit`, `:q!`, `:quit!`) added as `Mode::Command`. Entered from QueryNormal / Explorer / Results via `:`. Not entered from Picker (already has a direct `q`) or QueryInsert (`:` is a literal char). Reaffirms the flat-enum decision: mode count is now 6, still well below the threshold that would warrant a hierarchical state machine. The origin-tracking pattern above generalises if more transient prompts are added later (e.g. `/` search).

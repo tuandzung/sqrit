@@ -46,6 +46,8 @@ pub fn test_app() -> App {
         async_rx,
         async_tx,
         query_id: 0,
+        command_buffer: String::new(),
+        command_origin: None,
     }
 }
 

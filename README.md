@@ -57,7 +57,15 @@ On first run, the connection picker appears. Connections are stored in `~/.sqrit
 | `yy` | Yank line |
 | `p` | Paste below |
 | `u` | Undo |
+| `:` | Enter command mode |
 | Enter | Execute query |
+
+#### Command Mode
+| Key | Action |
+|-----|--------|
+| `:q` / `:quit` / `:q!` / `:quit!` + Enter | Quit |
+| Esc | Cancel and return to previous mode |
+| Backspace | Delete char (cancels on empty) |
 
 #### Query Editor — Insert Mode
 | Key | Action |

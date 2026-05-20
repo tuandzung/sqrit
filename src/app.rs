@@ -82,6 +82,8 @@ pub struct App {
     pub async_rx: mpsc::UnboundedReceiver<AsyncResult>,
     pub async_tx: mpsc::UnboundedSender<AsyncResult>,
     pub query_id: u64,
+    pub command_buffer: String,
+    pub command_origin: Option<Mode>,
 }
 
 impl App {
@@ -113,6 +115,8 @@ impl App {
             async_rx,
             async_tx,
             query_id: 0,
+            command_buffer: String::new(),
+            command_origin: None,
         })
     }
 
@@ -602,6 +606,9 @@ impl App {
     }
 
     pub fn status_bar_text(&self) -> String {
+        if self.mode == Mode::Command {
+            return format!(":{}", self.command_buffer);
+        }
         let mode_str = self.mode.label();
         let conn = self.active_connection.as_deref().unwrap_or("no connection");
 
