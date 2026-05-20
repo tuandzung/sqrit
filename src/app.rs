@@ -308,8 +308,10 @@ impl App {
             if event::poll(std::time::Duration::from_millis(100))? {
                 if let Event::Key(key) = event::read()? {
                     if key.kind == KeyEventKind::Press {
-                        let mode = self.mode;
-                        mode.handle_key(key, self);
+                        // Go through `handle_key_event` so the space-prefix
+                        // dispatcher (<space>t, <space>f) runs before mode
+                        // handlers. Bypassing it loses the prefix.
+                        self.handle_key_event(key);
                     }
                 }
             }

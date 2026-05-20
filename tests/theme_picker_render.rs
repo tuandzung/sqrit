@@ -129,6 +129,54 @@ fn selected_row_uses_selection_bg() {
     }
 }
 
+// E2E: simulate real user path — QueryNormal, press space then t, then render.
+// This mirrors what cargo run does after the user connects.
+#[test]
+fn e2e_space_t_from_query_normal_opens_modal() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use sqrit::theme::ensure_bundled;
+    use tempfile::tempdir;
+
+    let tmp = tempdir().unwrap();
+    ensure_bundled(tmp.path()).unwrap();
+
+    let mut app = common::test_app();
+    app.themes_dir = tmp.path().to_path_buf();
+    app.app_config_path = tmp.path().join("config.toml");
+    app.mode = Mode::QueryNormal;
+
+    let space = KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE);
+    let t = KeyEvent::new(KeyCode::Char('t'), KeyModifiers::NONE);
+    app.handle_key_event(space);
+    app.handle_key_event(t);
+
+    assert_eq!(
+        app.mode,
+        Mode::ThemePicker,
+        "space+t should enter ThemePicker"
+    );
+    assert!(
+        app.theme_picker.is_some(),
+        "theme_picker state should be Some"
+    );
+    let avail = &app.theme_picker.as_ref().unwrap().available;
+    assert_eq!(
+        avail.len(),
+        5,
+        "expected 5 bundled themes, got {}",
+        avail.len()
+    );
+
+    let backend = TestBackend::new(80, 24);
+    let mut terminal = Terminal::new(backend).unwrap();
+    terminal.draw(|f| app.render(f)).unwrap();
+
+    assert!(
+        buffer_contains(&terminal, "rose-pine"),
+        "modal should list rose-pine after space+t e2e"
+    );
+}
+
 // T1 #1: modal renders the list of available theme names
 #[test]
 fn renders_available_theme_names() {
