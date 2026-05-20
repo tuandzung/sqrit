@@ -1,3 +1,6 @@
+pub mod app;
+pub use app::AppConfig;
+
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
