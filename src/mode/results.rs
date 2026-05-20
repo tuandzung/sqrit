@@ -80,6 +80,7 @@ pub fn handle_key(key: KeyEvent, app: &mut App) {
         KeyCode::Char(' ') => {
             app.pending_space = true;
         }
+        KeyCode::Char(':') => crate::mode::command::enter(app, Mode::Results),
         _ => {}
     }
 }

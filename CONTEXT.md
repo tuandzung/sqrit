@@ -26,9 +26,10 @@ Left sidebar schema browser. Tree hierarchy: connection → tables → columns, 
 Toggleable with `<space>e`.
 
 ### Mode
-Current input handling state. Two categories:
+Current input handling state. Three categories:
 - **Edit modes** (query pane): Normal, Insert
 - **Focus states** (which pane is active): Explorer, Query, Results
+- **Transient modes**: Command (vim-style `:` prompt; tracks origin mode for Esc/return)
 
 Each mode has its own `handle_key()` method. Main event loop dispatches to active mode.
 
@@ -47,6 +48,7 @@ No alias resolution in baseline.
 
 ### Status Bar
 Fixed bar at bottom. Shows: current mode, connection name, query status (idle/running/error), error messages.
+While in Command mode, replaced by an editable `:<buffer>` prompt; on Enter, the buffer is parsed (`q`/`quit`/`q!`/`quit!` → quit) and mode returns to origin.
 
 ## Baseline Scope (v0.1)
 
