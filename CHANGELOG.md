@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+
+- Autocomplete Tab accept now replaces the typed word prefix instead of appending the suggestion to it (e.g. typing `SEL` + Tab on `SELECT` now yields `SELECT`, not `SELSELECT`). New `EditorBuffer::delete_backwards(n)` removes the prefix in a single undoable step.
+
 ## [0.1.0] - 2026-05-14
 
 ### Added

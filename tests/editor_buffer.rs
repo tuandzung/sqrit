@@ -262,6 +262,65 @@ fn undo_reverts_multiple_inserts_one_at_a_time() {
     assert_eq!(buf.text(), "");
 }
 
+// T26 #1: delete_backwards removes n chars before cursor
+#[test]
+fn delete_backwards_removes_n_chars() {
+    let mut buf = EditorBuffer::new();
+    buf.insert_str("SELE");
+    buf.delete_backwards(4);
+    assert_eq!(buf.text(), "");
+    assert_eq!(buf.cursor(), (0, 0));
+}
+
+// T26 #2: delete_backwards with 0 is noop
+#[test]
+fn delete_backwards_zero_noop() {
+    let mut buf = EditorBuffer::new();
+    buf.insert_str("abc");
+    buf.delete_backwards(0);
+    assert_eq!(buf.text(), "abc");
+    assert_eq!(buf.cursor(), (0, 3));
+}
+
+// T26 #3: delete_backwards clamps to cursor_col, does not cross line
+#[test]
+fn delete_backwards_clamps_to_line_start() {
+    let mut buf = EditorBuffer::new();
+    buf.insert_str("ab\ncd");
+    // cursor at (1, 2)
+    buf.delete_backwards(10);
+    assert_eq!(buf.text(), "ab\n");
+    assert_eq!(buf.cursor(), (1, 0));
+}
+
+// T26 #4: delete_backwards is undoable as one operation
+#[test]
+fn delete_backwards_undo() {
+    let mut buf = EditorBuffer::new();
+    buf.insert_str("SELE");
+    buf.delete_backwards(4);
+    assert_eq!(buf.text(), "");
+    buf.undo();
+    assert_eq!(buf.text(), "SELE");
+    assert_eq!(buf.cursor(), (0, 4));
+}
+
+// T26 #5: delete_backwards removes prefix within line, preserving suffix
+#[test]
+fn delete_backwards_preserves_suffix() {
+    let mut buf = EditorBuffer::new();
+    buf.insert_str("SELE foo");
+    // cursor at (0, 8); move back to after "SELE"
+    buf.cursor_left();
+    buf.cursor_left();
+    buf.cursor_left();
+    buf.cursor_left();
+    // cursor at (0, 4)
+    buf.delete_backwards(4);
+    assert_eq!(buf.text(), " foo");
+    assert_eq!(buf.cursor(), (0, 0));
+}
+
 // T10 #10: undo reverts delete_line (single operation)
 #[test]
 fn undo_reverts_delete_line() {
