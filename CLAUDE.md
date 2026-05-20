@@ -84,7 +84,7 @@ Significant decisions live in `docs/adr/`:
 - `0002-database-trait-from-start.md` — `Database` trait as the single DB seam.
 - `0003-mode-dispatch-keybinding.md` — flat `Mode` enum, no hierarchical state machine; origin-tracking pattern for transient prompts; v0.2 addendum adds a trait-based dispatch refinement so help-overlay bindings can't drift from handlers.
 - `0004-local-integration-runner.md` — `justfile` + `docker-compose.yml` for local integration tests; CI stays on GitHub Services.
-- `0005-theme-toml-schema.md` — themes as external TOML in `~/.sqrit/themes/`, four defaults embedded + written on first run, `~/.sqrit/config.toml` selects the active theme.
+- `0005-theme-toml-schema.md` — themes as external TOML in `~/.sqrit/themes/`, five defaults embedded + written on first run (Rose Pine, Tokyo Night, Nord, Gruvbox, Catppuccin Macchiato), `~/.sqrit/config.toml` selects the active theme.
 - `0006-per-adapter-query-cancel.md` — DB-level cancel via a `Database::cancel()` trait method; per-adapter native mechanisms (SQLite interrupt, PG `pg_cancel_backend`, MySQL `KILL QUERY`).
 
 ## Domain Glossary

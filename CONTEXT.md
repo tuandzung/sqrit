@@ -51,7 +51,7 @@ Fixed bar at bottom. Shows: current mode, connection name, query status (idle/ru
 While in Command mode, replaced by an editable `:<buffer>` prompt; on Enter, the buffer is parsed (`q`/`quit`/`q!`/`quit!` → quit) and mode returns to origin.
 
 ### Theme (v0.2)
-Visual palette applied across the TUI. Distributed as TOML files in `~/.sqrit/themes/`; four defaults (Rose Pine, Tokyo Night, Nord, Gruvbox) are embedded in the binary and written to that directory on first run (idempotent — existing files are not overwritten). The active theme name is persisted in `~/.sqrit/config.toml`. Switched via `<space>t`, which opens a picker modal with live preview; Enter applies and persists, Esc reverts. Malformed or missing theme files fall back to a hardcoded default with a status-bar warning. See [ADR 5](docs/adr/0005-theme-toml-schema.md).
+Visual palette applied across the TUI. Distributed as TOML files in `~/.sqrit/themes/`; five defaults (Rose Pine, Tokyo Night, Nord, Gruvbox, Catppuccin Macchiato) are embedded in the binary and written to that directory on first run (idempotent — existing files are not overwritten). The active theme name is persisted in `~/.sqrit/config.toml`. Switched via `<space>t`, which opens a picker modal with live preview; Enter applies and persists, Esc reverts. Malformed or missing theme files fall back to a hardcoded default with a status-bar warning. See [ADR 5](docs/adr/0005-theme-toml-schema.md).
 
 ### Command Palette (v0.2)
 Single-letter actions reached via the `<space>` prefix from non-Insert, non-Picker modes:
@@ -99,7 +99,7 @@ DB-level cancel of a running query, exposed as `async fn cancel(&self)` on the `
 
 Power-user polish, no new system dependencies, no CLI mode. Tracked by milestone `v0.2-polish`.
 
-- **Themes** — external TOML in `~/.sqrit/themes/`, 4 defaults bundled (Rose Pine / Tokyo Night / Nord / Gruvbox). See ADR 5.
+- **Themes** — external TOML in `~/.sqrit/themes/`, 5 defaults bundled (Rose Pine / Tokyo Night / Nord / Gruvbox / Catppuccin Macchiato). See ADR 5.
 - **Space command palette** — `<space>c/x/z/t/q/h/f` for actions; `?` for help overlay.
 - **Help overlay** — `?` toggles a modal of the active mode's keybindings, sourced from each handler's `bindings()` method. Requires the trait-based dispatch refinement in the [ADR 3 addendum](docs/adr/0003-mode-dispatch-keybinding.md).
 - **Cell viewer** — `v` opens a read-only modal with `Tab` raw↔formatted toggle (JSON / date / hex).

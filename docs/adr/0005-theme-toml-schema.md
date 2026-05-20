@@ -4,7 +4,7 @@
 
 ## Context
 
-v0.2 introduces theming. Every TUI surface (borders, status bar, results table, syntax-highlighted SQL, autocomplete popup, modals) currently reads `Color::X` literals scattered across `src/app.rs` and the mode renderers. We need a single source of truth for colors, a way to ship four named presets (Rose Pine, Tokyo Night, Nord, Gruvbox), and a path for users to add their own themes without recompiling.
+v0.2 introduces theming. Every TUI surface (borders, status bar, results table, syntax-highlighted SQL, autocomplete popup, modals) currently reads `Color::X` literals scattered across `src/app.rs` and the mode renderers. We need a single source of truth for colors, a way to ship five named presets (Rose Pine, Tokyo Night, Nord, Gruvbox, Catppuccin Macchiato), and a path for users to add their own themes without recompiling.
 
 ## Decision
 
@@ -29,7 +29,7 @@ v0.2 introduces theming. Every TUI surface (borders, status bar, results table, 
 
   Hex strings only; parsed via `ratatui::style::Color::from_str` (RGB hex), which is sufficient for terminal output and avoids a custom color parser. Missing required fields are an error.
 
-- **Storage.** Themes live in `~/.sqrit/themes/<name>.toml`. The active theme is selected by name in `~/.sqrit/config.toml`:
+- **Storage.** Themes live in `~/.sqrit/themes/<name>.toml`. Default file names: `rose-pine.toml`, `tokyo-night.toml`, `nord.toml`, `gruvbox.toml`, `catppuccin-macchiato.toml`. The active theme is selected by name in `~/.sqrit/config.toml`:
 
   ```toml
   # ~/.sqrit/config.toml
@@ -38,7 +38,7 @@ v0.2 introduces theming. Every TUI surface (borders, status bar, results table, 
 
   `config.toml` is a new file separate from `connections.toml` so the connection store stays minimal and the new theming domain doesn't leak in.
 
-- **First-run write.** The four default themes are embedded in the binary via `include_str!`. On startup, sqrit ensures `~/.sqrit/themes/` exists and writes any default file that is not already present (idempotent — existing files are never overwritten, so user edits survive upgrades).
+- **First-run write.** The five default themes are embedded in the binary via `include_str!`. On startup, sqrit ensures `~/.sqrit/themes/` exists and writes any default file that is not already present (idempotent — existing files are never overwritten, so user edits survive upgrades).
 
 - **Loading + fallback.** At startup, sqrit loads the file matching the `theme` name from `config.toml`. On error (file missing, malformed TOML, missing required field), it falls back to a hardcoded `Theme::default()` baked into the binary and shows a one-line status-bar warning naming the failure. No crash, ever.
 
@@ -56,7 +56,7 @@ v0.2 introduces theming. Every TUI surface (borders, status bar, results table, 
 ## Consequences
 
 - Adds `~/.sqrit/config.toml` to the file footprint. New file → new doc entry in README under Configuration, and likely a v0.3 ADR if more global settings land.
-- First-run side effect: sqrit writes 4 files into `~/.sqrit/themes/`. Documented in CHANGELOG and Configuration; safe because writes are gated on file-not-exists.
+- First-run side effect: sqrit writes 5 files into `~/.sqrit/themes/`. Documented in CHANGELOG and Configuration; safe because writes are gated on file-not-exists.
 - Live-preview-on-arrow-keys means the picker modal must hold a snapshot of the prior `Theme` to restore on Esc. State adds one field to the picker's `ModalState`.
-- Future external themes (community-shared, marketplace) are already supported by the schema. v0.2 ships only the 4 defaults and the loader; discovery UX is deferred to v0.3+.
+- Future external themes (community-shared, marketplace) are already supported by the schema. v0.2 ships only the 5 defaults and the loader; discovery UX is deferred to v0.3+.
 - Color quantization on 16-color terminals is delegated to ratatui — themes may look subtly different in a low-color terminal. Not a sqrit concern.
