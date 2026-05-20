@@ -177,6 +177,54 @@ fn e2e_space_t_from_query_normal_opens_modal() {
     );
 }
 
+// T1 #6: modal truncates long lists to the visible inner rows and renders the
+// first N entries (no overflow into the surrounding panes).
+#[test]
+fn renders_only_visible_rows_for_long_list() {
+    let themes: Vec<String> = (0..20).map(|i| format!("zz-theme-{:02}", i)).collect();
+    let names: Vec<&str> = themes.iter().map(String::as_str).collect();
+
+    let mut app = common::test_app();
+    enter_picker(&mut app, names);
+
+    // Small terminal forces the modal's inner height below the list length.
+    let backend = TestBackend::new(40, 10);
+    let mut terminal = Terminal::new(backend).unwrap();
+    terminal.draw(|f| app.render(f)).unwrap();
+
+    let buffer = terminal.backend().buffer();
+    let mut rendered: Vec<usize> = Vec::new();
+    for (i, name) in themes.iter().enumerate() {
+        let mut found = false;
+        for y in 0..buffer.area.height {
+            let mut row = String::new();
+            for x in 0..buffer.area.width {
+                row.push_str(buffer[(x, y)].symbol());
+            }
+            if row.contains(name) {
+                found = true;
+                break;
+            }
+        }
+        if found {
+            rendered.push(i);
+        }
+    }
+
+    assert!(!rendered.is_empty(), "no themes rendered at all");
+    assert!(
+        rendered.len() < themes.len(),
+        "expected truncation: rendered {} of {}",
+        rendered.len(),
+        themes.len()
+    );
+    assert_eq!(
+        rendered,
+        (0..rendered.len()).collect::<Vec<_>>(),
+        "rendered themes should be the contiguous prefix of the list"
+    );
+}
+
 // T1 #1: modal renders the list of available theme names
 #[test]
 fn renders_available_theme_names() {

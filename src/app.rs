@@ -365,8 +365,9 @@ impl App {
 
     /// Modal rect sized to fit the longest theme name plus borders/padding,
     /// clamped to `area`. Centered. Pure — exposed for testability.
+    /// `max_name_len` is in characters (not bytes) so non-ASCII names lay out correctly.
     pub fn theme_picker_modal_rect(area: Rect, item_count: usize, max_name_len: usize) -> Rect {
-        let title_len = " Themes ".len();
+        let title_len = " Themes ".chars().count();
         let content_width = max_name_len.max(title_len) as u16;
         let desired_w = content_width.saturating_add(4); // borders + 1ch padding each side
         let desired_h = (item_count as u16).saturating_add(2); // borders
@@ -419,7 +420,7 @@ impl App {
                 } else {
                     Style::default().fg(self.theme.fg)
                 };
-                Line::styled(name.clone(), style)
+                Line::styled(name.as_str(), style)
             })
             .collect();
         frame.render_widget(Paragraph::new(lines), inner);
