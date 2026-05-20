@@ -1,0 +1,14 @@
+name = "rose-pine"
+
+[colors]
+bg = "#191724"
+fg = "#e0def4"
+border_focused = "#c4a7e7"
+border_unfocused = "#26233a"
+selection_bg = "#403d52"
+keyword = "#c4a7e7"
+string = "#f6c177"
+comment = "#6e6a86"
+number = "#f6c177"
+type = "#9ccfd8"
+error = "#eb6f92"

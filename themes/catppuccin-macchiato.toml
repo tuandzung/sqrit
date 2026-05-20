@@ -1,0 +1,14 @@
+name = "catppuccin-macchiato"
+
+[colors]
+bg = "#24273a"
+fg = "#cad3f5"
+border_focused = "#8aadf4"
+border_unfocused = "#494d64"
+selection_bg = "#363a4f"
+keyword = "#c6a0f6"
+string = "#a6da95"
+comment = "#6e738d"
+number = "#f5a97f"
+type = "#91d7e3"
+error = "#ed8796"

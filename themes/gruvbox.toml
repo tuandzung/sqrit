@@ -1,0 +1,14 @@
+name = "gruvbox"
+
+[colors]
+bg = "#282828"
+fg = "#ebdbb2"
+border_focused = "#fabd2f"
+border_unfocused = "#504945"
+selection_bg = "#3c3836"
+keyword = "#fb4934"
+string = "#b8bb26"
+comment = "#928374"
+number = "#d3869b"
+type = "#fabd2f"
+error = "#fb4934"

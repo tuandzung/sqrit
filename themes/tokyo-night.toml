@@ -1,0 +1,14 @@
+name = "tokyo-night"
+
+[colors]
+bg = "#1a1b26"
+fg = "#c0caf5"
+border_focused = "#7aa2f7"
+border_unfocused = "#414868"
+selection_bg = "#283457"
+keyword = "#bb9af7"
+string = "#9ece6a"
+comment = "#565f89"
+number = "#ff9e64"
+type = "#7dcfff"
+error = "#f7768e"
