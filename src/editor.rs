@@ -95,6 +95,20 @@ impl EditorBuffer {
         }
     }
 
+    pub fn delete_backwards(&mut self, n: usize) {
+        if n == 0 {
+            return;
+        }
+        let take = n.min(self.cursor_col);
+        if take == 0 {
+            return;
+        }
+        self.save_undo();
+        let start = self.cursor_col - take;
+        self.lines[self.cursor_row].drain(start..self.cursor_col);
+        self.cursor_col = start;
+    }
+
     pub fn cursor_left(&mut self) {
         if self.cursor_col > 0 {
             self.cursor_col -= 1;

@@ -117,6 +117,70 @@ fn pending_schema_load_deferred_flow() {
     assert!(app.pending_schema_load);
 }
 
+// T26: Tab accept replaces the typed prefix instead of appending to it
+#[test]
+fn tab_accept_replaces_prefix() {
+    let mut app = make_insert_app_with_editor();
+
+    for c in "SEL".chars() {
+        app.handle_key_event(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE));
+    }
+    let candidates = sqrit::autocomplete::suggest("SEL", None);
+    app.autocomplete.open(candidates);
+
+    app.handle_key_event(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+
+    assert_eq!(
+        app.editor.text(),
+        "SELECT",
+        "Tab accept should replace 'SEL' with 'SELECT', not append"
+    );
+    assert_eq!(
+        app.editor.cursor(),
+        (0, "SELECT".len()),
+        "cursor should land at end of inserted word"
+    );
+}
+
+// T26: Tab accept preserves text after the cursor
+#[test]
+fn tab_accept_preserves_suffix() {
+    let mut app = make_insert_app_with_editor();
+
+    for c in "SEL foo".chars() {
+        app.handle_key_event(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE));
+    }
+    // Move cursor back to end of "SEL"
+    for _ in 0..4 {
+        app.handle_key_event(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE));
+    }
+    let candidates = sqrit::autocomplete::suggest("SEL", None);
+    app.autocomplete.open(candidates);
+
+    app.handle_key_event(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+
+    assert_eq!(app.editor.text(), "SELECT foo");
+    assert_eq!(
+        app.editor.cursor(),
+        (0, "SELECT".len()),
+        "cursor should land between inserted word and preserved suffix"
+    );
+}
+
+// T26: Tab accept with empty prefix just inserts the word
+#[test]
+fn tab_accept_empty_prefix_inserts_word() {
+    let mut app = make_insert_app_with_editor();
+
+    // Open with non-empty candidate list, cursor at column 0 (empty prefix)
+    app.autocomplete.open(vec!["SELECT".to_string()]);
+
+    app.handle_key_event(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+
+    assert_eq!(app.editor.text(), "SELECT");
+    assert_eq!(app.editor.cursor(), (0, "SELECT".len()));
+}
+
 #[test]
 fn tick_autocomplete_uses_schema_for_suggestions() {
     let mut app = make_insert_app_with_editor();

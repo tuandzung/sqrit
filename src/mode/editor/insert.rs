@@ -25,6 +25,11 @@ pub fn handle_key(key: KeyEvent, app: &mut App) {
             #[allow(clippy::collapsible_match)]
             if app.autocomplete.is_visible() {
                 if let Some(word) = app.autocomplete.accept() {
+                    let text = app.editor.text();
+                    let (row, col) = app.editor.cursor();
+                    let prefix_len =
+                        crate::autocomplete::current_word_prefix(&text, row, col).len();
+                    app.editor.delete_backwards(prefix_len);
                     app.editor.insert_str(&word);
                 }
             }
