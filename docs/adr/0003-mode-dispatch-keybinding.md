@@ -27,3 +27,26 @@ Use a simple `Mode` enum. Each variant has its own `handle_key()` method. Main e
 ## Addendum — Command mode (2026-05-20)
 
 Vim-style command-line (`:q`, `:quit`, `:q!`, `:quit!`) added as `Mode::Command`. Entered from QueryNormal / Explorer / Results via `:`. Not entered from Picker (already has a direct `q`) or QueryInsert (`:` is a literal char). Reaffirms the flat-enum decision: mode count is now 6, still well below the threshold that would warrant a hierarchical state machine. The origin-tracking pattern above generalises if more transient prompts are added later (e.g. `/` search).
+
+## Addendum — Trait-based dispatch for help overlay (planned for v0.2)
+
+The flat enum stays — it remains the canonical identifier of *which* mode is active and where state lives on `App`. What changes is the dispatch shape: instead of free `handle_key(key, &mut App)` functions, each mode exposes a small trait:
+
+```rust
+trait ModeHandler {
+    fn dispatch(&self, key: KeyEvent, app: &mut App);
+    fn bindings(&self) -> &'static [KeyBinding];
+}
+```
+
+`KeyBinding { key: &'static str, action: &'static str }` is the data the help overlay (`?`) renders. By declaring bindings on the same type that dispatches them, the help overlay can never drift from the code that handles keys — the only way to add a binding is to add it to both lists in the same impl block, and the compiler's exhaustiveness checks make missing matches visible.
+
+The `Mode` enum still chooses the active handler:
+
+```rust
+impl Mode {
+    fn handler(&self) -> &dyn ModeHandler { ... }
+}
+```
+
+So the addendum is purely an internal refinement — external behavior identical, ADR 3's flat-enum decision intact, but the bindings-list-vs-handler drift class is eliminated structurally rather than by lint.
