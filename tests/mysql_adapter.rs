@@ -152,6 +152,16 @@ async fn execute_select_returns_columns_and_rows() {
         &Value::Text("carol".into())
     );
     assert_eq!(result.rows[2].get("active").unwrap(), &Value::Null);
+
+    // Regression: sqlx-mysql reports type name "BOOLEAN" for TINYINT(1)/BOOL
+    // columns. Without an explicit arm in `mysql_row_to_value`, the read fell
+    // through to the String branch and produced the literal placeholder
+    // "<unsupported mysql type: BOOLEAN>" instead of a Value::Boolean.
+    assert_eq!(result.rows[0].get("active").unwrap(), &Value::Boolean(true));
+    assert_eq!(
+        result.rows[1].get("active").unwrap(),
+        &Value::Boolean(false)
+    );
 }
 
 // #5 list_tables after CREATE TABLE includes the table
