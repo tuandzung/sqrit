@@ -198,3 +198,47 @@ fn empty_command_cancels_silently() {
     assert!(!app.should_quit);
     assert!(!app.status_message.contains("Not a command"));
 }
+
+// --- Slice 13: surrounding whitespace is trimmed before matching ---
+
+#[test]
+fn whitespace_padded_quit_still_quits() {
+    let mut app = common::test_app();
+    app.mode = Mode::QueryNormal;
+    app.handle_key_event(key(KeyCode::Char(':')));
+    type_str(&mut app, "  q  ");
+    app.handle_key_event(key(KeyCode::Enter));
+
+    assert!(app.should_quit);
+}
+
+#[test]
+fn whitespace_padded_unknown_command_uses_trimmed_form_in_error() {
+    let mut app = common::test_app();
+    app.mode = Mode::QueryNormal;
+    app.handle_key_event(key(KeyCode::Char(':')));
+    type_str(&mut app, "  bogus   ");
+    app.handle_key_event(key(KeyCode::Enter));
+
+    assert_eq!(app.mode, Mode::QueryNormal);
+    assert!(!app.should_quit);
+    // Trimmed form appears in the error message (no surrounding spaces).
+    assert!(
+        app.status_message.contains("Not a command: bogus"),
+        "expected trimmed error, got: {}",
+        app.status_message
+    );
+}
+
+#[test]
+fn whitespace_only_command_cancels_silently() {
+    let mut app = common::test_app();
+    app.mode = Mode::QueryNormal;
+    app.handle_key_event(key(KeyCode::Char(':')));
+    type_str(&mut app, "   ");
+    app.handle_key_event(key(KeyCode::Enter));
+
+    assert_eq!(app.mode, Mode::QueryNormal);
+    assert!(!app.should_quit);
+    assert!(!app.status_message.contains("Not a command"));
+}

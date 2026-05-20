@@ -16,11 +16,7 @@ pub fn handle_key(key: KeyEvent, app: &mut App) {
 
 fn cancel(app: &mut App) {
     app.command_buffer.clear();
-    if let Some(origin) = app.command_origin.take() {
-        app.mode = origin;
-    } else {
-        app.mode = Mode::QueryNormal;
-    }
+    restore_origin_or_default(app);
 }
 
 fn execute(app: &mut App) {
@@ -31,22 +27,31 @@ fn execute(app: &mut App) {
             app.should_quit = true;
             app.command_origin = None;
         }
-        "" => {
-            cancel(app);
-        }
+        "" => cancel(app),
         other => {
             app.status_message = format!("Not a command: {}", other);
-            if let Some(origin) = app.command_origin.take() {
-                app.mode = origin;
-            } else {
-                app.mode = Mode::QueryNormal;
-            }
+            restore_origin_or_default(app);
         }
     }
 }
 
+/// Restore the mode that was active when command mode was entered.
+/// Falls back to `Mode::QueryNormal` if no origin was recorded — should
+/// never happen in practice, since `enter()` always sets one.
+fn restore_origin_or_default(app: &mut App) {
+    app.mode = app.command_origin.take().unwrap_or(Mode::QueryNormal);
+}
+
 /// Enter command mode from `origin`. Used by `:` keybinding in non-insert modes.
+/// Asserts no prior origin is recorded — command mode is intentionally single-level;
+/// `:` from within command mode would be a literal char, so a non-None origin here
+/// signals a missing cleanup path.
 pub fn enter(app: &mut App, origin: Mode) {
+    debug_assert!(
+        app.command_origin.is_none(),
+        "command::enter called with existing origin {:?}",
+        app.command_origin,
+    );
     app.command_origin = Some(origin);
     app.command_buffer.clear();
     app.mode = Mode::Command;
