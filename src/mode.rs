@@ -1,4 +1,3 @@
-pub mod command;
 pub mod editor;
 pub mod explorer;
 pub mod picker;
@@ -16,7 +15,6 @@ pub enum Mode {
     QueryNormal,
     QueryInsert,
     Results,
-    Command,
     ThemePicker,
 }
 
@@ -28,7 +26,6 @@ impl Mode {
             Mode::QueryInsert => editor::insert::handle_key(key, app),
             Mode::Explorer => explorer::handle_key(key, app),
             Mode::Results => results::handle_key(key, app),
-            Mode::Command => command::handle_key(key, app),
             Mode::ThemePicker => theme_picker::handle_key(key, app),
         }
     }
@@ -40,7 +37,6 @@ impl Mode {
             Mode::QueryNormal => "NORMAL",
             Mode::QueryInsert => "INSERT",
             Mode::Results => "RESULTS",
-            Mode::Command => "COMMAND",
             Mode::ThemePicker => "THEME",
         }
     }

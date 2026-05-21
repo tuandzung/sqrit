@@ -29,7 +29,7 @@ Toggleable with `<space>e`.
 Current input handling state. Three categories:
 - **Edit modes** (query pane): Normal, Insert
 - **Focus states** (which pane is active): Explorer, Query, Results
-- **Transient modes**: Command (vim-style `:` prompt; tracks origin mode for Esc/return)
+- **Modal overlays**: ThemePicker (live-preview picker; tracks the pre-modal theme for Esc-revert)
 
 Each mode has its own `handle_key()` method. Main event loop dispatches to active mode.
 
@@ -48,7 +48,6 @@ No alias resolution in baseline.
 
 ### Status Bar
 Fixed bar at bottom. Shows: current mode, connection name, query status (idle/running/error), error messages.
-While in Command mode, replaced by an editable `:<buffer>` prompt; on Enter, the buffer is parsed (`q`/`quit`/`q!`/`quit!` → quit) and mode returns to origin.
 
 ### Theme (v0.2)
 Visual palette applied across the TUI. Distributed as TOML files in `~/.sqrit/themes/`; five defaults (Rose Pine, Tokyo Night, Nord, Gruvbox, Catppuccin Macchiato) are embedded in the binary and written to that directory on first run (idempotent — existing files are not overwritten). The active theme name is persisted in `~/.sqrit/config.toml`. Switched via `<space>t`, which opens a picker modal with live preview; Enter applies and persists, Esc reverts. Malformed or missing theme files fall back to a hardcoded default with a status-bar warning. See [ADR 5](docs/adr/0005-theme-toml-schema.md).
@@ -56,7 +55,7 @@ Visual palette applied across the TUI. Distributed as TOML files in `~/.sqrit/th
 ### Command Palette (v0.2)
 Single-letter actions reached via the `<space>` prefix from non-Insert, non-Picker modes:
 - `<space>f` — maximize focused pane (existing in v0.1)
-- `<space>q` — quit (parallels `:q`)
+- `<space>q` — quit
 - `<space>c` — back to the connection picker (change connection)
 - `<space>x` — disconnect current connection, return to picker
 - `<space>z` — cancel running query (see [Cancel](#cancel-v02))

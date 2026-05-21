@@ -46,8 +46,6 @@ pub fn test_app() -> App {
         async_rx,
         async_tx,
         query_id: 0,
-        command_buffer: String::new(),
-        command_origin: None,
         theme: sqrit::theme::Theme::default_theme(),
         themes_dir: std::path::PathBuf::new(),
         theme_picker: None,
