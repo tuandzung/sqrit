@@ -45,6 +45,23 @@ impl EditorBuffer {
         self.cursor_col
     }
 
+    pub fn replace_all(&mut self, s: &str) {
+        self.save_undo();
+        self.lines = vec![String::new()];
+        self.cursor_row = 0;
+        self.cursor_col = 0;
+        for c in s.chars() {
+            if c == '\n' {
+                self.lines.push(String::new());
+                self.cursor_row += 1;
+                self.cursor_col = 0;
+            } else {
+                self.lines[self.cursor_row].push(c);
+                self.cursor_col += 1;
+            }
+        }
+    }
+
     pub fn insert_str(&mut self, s: &str) {
         for c in s.chars() {
             if c == '\n' {

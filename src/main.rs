@@ -6,6 +6,7 @@ pub mod config;
 pub mod db;
 pub mod editor;
 pub mod explorer;
+pub mod history;
 pub mod mode;
 pub mod picker;
 pub mod results;
