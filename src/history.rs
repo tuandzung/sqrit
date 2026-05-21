@@ -22,6 +22,20 @@ pub struct HistoryEntry {
 
 pub const HISTORY_CAP: usize = 500;
 
+fn count_lines(path: &Path) -> std::io::Result<usize> {
+    if !path.exists() {
+        return Ok(0);
+    }
+    let reader = BufReader::new(std::fs::File::open(path)?);
+    let mut n = 0usize;
+    for line in reader.lines() {
+        if !line?.trim().is_empty() {
+            n += 1;
+        }
+    }
+    Ok(n)
+}
+
 pub fn history_path_for(sqrit_dir: &Path, connection_name: &str) -> PathBuf {
     let sanitized: String = connection_name
         .chars()
@@ -57,10 +71,6 @@ impl HistoryStore {
         }
     }
 
-    pub fn with_cap(path: PathBuf, cap: usize) -> Self {
-        Self { path, cap }
-    }
-
     pub fn append(&self, entry: &HistoryEntry) -> anyhow::Result<()> {
         if let Some(parent) = self.path.parent() {
             std::fs::create_dir_all(parent)?;
@@ -77,10 +87,10 @@ impl HistoryStore {
     }
 
     fn trim_to_cap(&self) -> anyhow::Result<()> {
-        let entries = self.load()?;
-        if entries.len() <= self.cap {
+        if count_lines(&self.path)? <= self.cap {
             return Ok(());
         }
+        let entries = self.load()?;
         let tail = &entries[entries.len() - self.cap..];
         let mut file = std::fs::File::create(&self.path)?;
         for entry in tail {

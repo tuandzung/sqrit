@@ -478,13 +478,13 @@ impl App {
         let Some(state) = self.history_picker.as_ref() else {
             return;
         };
-        let modal = Self::cell_viewer_modal_rect(area, 20);
+        let title = format!(" Query History ({}) ", state.entries.len());
+        let modal = Self::cell_viewer_modal_rect(area, title.chars().count());
         if modal.width == 0 || modal.height == 0 {
             return;
         }
         frame.render_widget(Clear, modal);
 
-        let title = format!(" Query History ({}) ", state.entries.len());
         let block = Block::default()
             .title(title)
             .borders(Borders::ALL)

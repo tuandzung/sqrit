@@ -9,7 +9,8 @@ fn key(code: KeyCode) -> KeyEvent {
     KeyEvent::new(code, KeyModifiers::NONE)
 }
 
-fn seed_history(app: &mut sqrit::app::App, sqls: &[&str]) {
+#[must_use = "drop the returned tempdir at end of test to clean up the history directory"]
+fn seed_history(app: &mut sqrit::app::App, sqls: &[&str]) -> tempfile::TempDir {
     let dir = tempfile::tempdir().unwrap();
     app.sqrit_dir = dir.path().to_path_buf();
     app.active_connection = Some("test".to_string());
@@ -25,14 +26,13 @@ fn seed_history(app: &mut sqrit::app::App, sqls: &[&str]) {
             })
             .unwrap();
     }
-    // Keep dir alive for the duration of the test.
-    std::mem::forget(dir);
+    dir
 }
 
 #[test]
 fn space_h_opens_history_picker_with_entries_newest_first() {
     let mut app = common::test_app();
-    seed_history(&mut app, &["SELECT 1", "SELECT 2", "SELECT 3"]);
+    let _dir = seed_history(&mut app, &["SELECT 1", "SELECT 2", "SELECT 3"]);
 
     app.handle_key_event(key(KeyCode::Char(' ')));
     app.handle_key_event(key(KeyCode::Char('h')));
@@ -54,7 +54,7 @@ fn space_h_opens_history_picker_with_entries_newest_first() {
 #[test]
 fn esc_closes_history_picker_without_modifying_editor() {
     let mut app = common::test_app();
-    seed_history(&mut app, &["SELECT 1"]);
+    let _dir = seed_history(&mut app, &["SELECT 1"]);
     let before = app.editor.text();
 
     app.handle_key_event(key(KeyCode::Char(' ')));
@@ -69,7 +69,7 @@ fn esc_closes_history_picker_without_modifying_editor() {
 #[test]
 fn enter_pastes_selected_sql_into_editor_and_closes() {
     let mut app = common::test_app();
-    seed_history(&mut app, &["SELECT old", "SELECT new"]);
+    let _dir = seed_history(&mut app, &["SELECT old", "SELECT new"]);
 
     app.handle_key_event(key(KeyCode::Char(' ')));
     app.handle_key_event(key(KeyCode::Char('h')));
@@ -87,7 +87,7 @@ fn enter_pastes_selected_sql_into_editor_and_closes() {
 #[test]
 fn typing_substring_filters_entries() {
     let mut app = common::test_app();
-    seed_history(
+    let _dir = seed_history(
         &mut app,
         &[
             "SELECT * FROM users",
@@ -112,7 +112,7 @@ fn typing_substring_filters_entries() {
 #[test]
 fn down_arrow_moves_selection_through_filtered_set() {
     let mut app = common::test_app();
-    seed_history(&mut app, &["SELECT 1", "SELECT 2", "SELECT 3"]);
+    let _dir = seed_history(&mut app, &["SELECT 1", "SELECT 2", "SELECT 3"]);
 
     app.handle_key_event(key(KeyCode::Char(' ')));
     app.handle_key_event(key(KeyCode::Char('h')));
