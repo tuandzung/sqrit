@@ -87,7 +87,10 @@ pub struct App {
     pub theme_picker: Option<crate::mode::theme_picker::ThemePickerState>,
     pub help: Option<crate::mode::help::HelpState>,
     pub cell_viewer: Option<crate::mode::cell_viewer::CellViewerState>,
+    pub history_picker: Option<crate::mode::history_picker::HistoryPickerState>,
     pub app_config_path: std::path::PathBuf,
+    pub sqrit_dir: std::path::PathBuf,
+    pub query_started_at: Option<Instant>,
 }
 
 impl App {
@@ -99,6 +102,7 @@ impl App {
         // then load the active theme named in ~/.sqrit/config.toml (or default if absent).
         // Paths are anchored at `~/.sqrit/` and error out if `$HOME` is unresolvable
         // rather than silently writing under the current working directory.
+        let sqrit_dir = crate::config::AppConfig::sqrit_dir()?;
         let themes_dir = crate::config::AppConfig::themes_dir()?;
         let app_config_path = crate::config::AppConfig::config_path()?;
         let _ = crate::theme::ensure_bundled(&themes_dir);
@@ -140,7 +144,10 @@ impl App {
             theme_picker: None,
             help: None,
             cell_viewer: None,
+            history_picker: None,
             app_config_path,
+            sqrit_dir,
+            query_started_at: None,
         })
     }
 
@@ -156,6 +163,7 @@ impl App {
                     if query_id != self.query_id {
                         continue;
                     }
+                    self.record_history(&status, result.as_ref());
                     self.query_status = status;
                     self.results_state.has_next_page = has_next_page;
                     if let Some(r) = result {
@@ -256,7 +264,8 @@ impl App {
                         return;
                     }
                     KeyCode::Char('h') => {
-                        self.status_message = "Query history not yet implemented".to_string();
+                        let origin = self.mode;
+                        crate::mode::history_picker::open(self, origin);
                         return;
                     }
                     _ => {
@@ -289,6 +298,42 @@ impl App {
         }
     }
 
+    fn record_history(&mut self, status: &QueryStatus, result: Option<&QueryResult>) {
+        let Some(conn) = self.active_connection.as_ref() else {
+            return;
+        };
+        let Some(sql) = self.last_query.clone() else {
+            return;
+        };
+        let duration_ms = self
+            .query_started_at
+            .take()
+            .map(|t| t.elapsed().as_millis() as u64)
+            .unwrap_or(0);
+        let (status_kind, rows) = match status {
+            QueryStatus::Success => {
+                let rows = result.map(|r| {
+                    r.total_count
+                        .unwrap_or(r.rows.len() as u64)
+                        .max(r.rows_affected.unwrap_or(0))
+                });
+                (crate::history::HistoryStatus::Ok, rows)
+            }
+            QueryStatus::Error(_) => (crate::history::HistoryStatus::Error, None),
+            _ => return,
+        };
+        let entry = crate::history::HistoryEntry {
+            ts: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+            sql,
+            duration_ms,
+            status: status_kind,
+            rows,
+        };
+        let path = crate::history::history_path_for(&self.sqrit_dir, conn);
+        let store = crate::history::HistoryStore::new(path);
+        let _ = store.append(&entry);
+    }
+
     pub fn execute_pending(&mut self) {
         let query = match self.pending_query.take() {
             Some(q) => q,
@@ -298,6 +343,7 @@ impl App {
         self.query_id += 1;
         let query_id = self.query_id;
         self.query_status = QueryStatus::Running;
+        self.query_started_at = Some(Instant::now());
         self.last_query = Some(query.clone());
 
         let is_select = query.trim_start().to_uppercase().starts_with("SELECT");
@@ -421,6 +467,59 @@ impl App {
         if self.mode == Mode::CellViewer && self.cell_viewer.is_some() {
             self.render_cell_viewer(frame, area);
         }
+        if self.mode == Mode::HistoryPicker && self.history_picker.is_some() {
+            self.render_history_picker(frame, area);
+        }
+    }
+
+    fn render_history_picker(&self, frame: &mut ratatui::Frame, area: Rect) {
+        let Some(state) = self.history_picker.as_ref() else {
+            return;
+        };
+        let modal = Self::cell_viewer_modal_rect(area, 20);
+        if modal.width == 0 || modal.height == 0 {
+            return;
+        }
+        frame.render_widget(Clear, modal);
+
+        let title = format!(" Query History ({}) ", state.entries.len());
+        let block = Block::default()
+            .title(title)
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(self.theme.border_focused))
+            .style(Style::default().bg(self.theme.bg).fg(self.theme.fg));
+        let inner = block.inner(modal);
+        frame.render_widget(block, modal);
+
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(1), Constraint::Min(1)])
+            .split(inner);
+
+        let filter_line = format!("/ {}", state.filter);
+        frame.render_widget(
+            Paragraph::new(filter_line).style(Style::default().fg(self.theme.fg)),
+            chunks[0],
+        );
+
+        let visible = state.visible();
+        let list_h = chunks[1].height as usize;
+        let start = state.selected.saturating_sub(list_h.saturating_sub(1));
+        let lines: Vec<Line> = visible
+            .iter()
+            .enumerate()
+            .skip(start)
+            .take(list_h)
+            .map(|(i, entry)| {
+                let mut style = Style::default().fg(self.theme.fg);
+                if i == state.selected {
+                    style = style.bg(self.theme.selection_bg);
+                }
+                let single = entry.sql.replace('\n', " ");
+                Line::from(Span::styled(single, style))
+            })
+            .collect();
+        frame.render_widget(Paragraph::new(lines), chunks[1]);
     }
 
     /// Modal rect for the cell viewer. Width ~60% of the terminal (clamped
