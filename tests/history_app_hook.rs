@@ -45,4 +45,8 @@ async fn errored_query_appends_history_entry_with_error_status() {
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0].status, HistoryStatus::Error);
     assert_eq!(entries[0].sql, "THIS IS NOT SQL");
+    assert_eq!(
+        entries[0].rows, None,
+        "errored queries must record rows=None so no stale count leaks"
+    );
 }

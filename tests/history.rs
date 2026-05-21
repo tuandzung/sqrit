@@ -64,4 +64,18 @@ fn path_for_sanitizes_connection_name() {
         base.join("history/etc-passwd.jsonl"),
         "path traversal must be neutralized"
     );
+
+    let empty = history_path_for(&base, "");
+    assert_eq!(
+        empty,
+        base.join("history/unnamed-conn.jsonl"),
+        "empty name must fall back to a non-empty basename"
+    );
+
+    let all_punct = history_path_for(&base, "///");
+    assert_eq!(
+        all_punct,
+        base.join("history/unnamed-conn.jsonl"),
+        "all-non-alnum name must fall back rather than produce `.jsonl`"
+    );
 }

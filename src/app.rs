@@ -331,7 +331,9 @@ impl App {
         };
         let path = crate::history::history_path_for(&self.sqrit_dir, conn);
         let store = crate::history::HistoryStore::new(path);
-        let _ = store.append(&entry);
+        if let Err(e) = store.append(&entry) {
+            self.status_message = format!("history append failed: {}", e);
+        }
     }
 
     pub fn execute_pending(&mut self) {

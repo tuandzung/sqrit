@@ -34,7 +34,14 @@ pub fn history_path_for(sqrit_dir: &Path, connection_name: &str) -> PathBuf {
         })
         .collect();
     let trimmed = sanitized.trim_matches('-');
-    sqrit_dir.join("history").join(format!("{}.jsonl", trimmed))
+    let basename = if trimmed.is_empty() {
+        "unnamed-conn"
+    } else {
+        trimmed
+    };
+    sqrit_dir
+        .join("history")
+        .join(format!("{}.jsonl", basename))
 }
 
 pub struct HistoryStore {
