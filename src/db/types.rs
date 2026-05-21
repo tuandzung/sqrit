@@ -57,6 +57,10 @@ impl QueryResult {
             total_count: None,
         }
     }
+
+    pub fn column_names(&self) -> Vec<&str> {
+        self.columns.iter().map(|c| c.name.as_str()).collect()
+    }
 }
 
 #[derive(Debug, Clone)]

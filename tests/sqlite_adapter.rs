@@ -72,8 +72,7 @@ async fn execute_select_returns_columns_and_rows() {
         .await
         .unwrap();
 
-    let names: Vec<&str> = result.columns.iter().map(|c| c.name.as_str()).collect();
-    assert_eq!(names, vec!["id", "name", "active"]);
+    assert_eq!(result.column_names(), vec!["id", "name", "active"]);
     assert_eq!(result.rows.len(), 2);
     assert_eq!(
         result.rows[0].get("name").unwrap(),

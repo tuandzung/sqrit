@@ -17,12 +17,7 @@ pub fn format_row(result: &QueryResult, row: usize) -> Option<String> {
 }
 
 pub fn format_all(result: &QueryResult) -> String {
-    let header = result
-        .columns
-        .iter()
-        .map(|c| c.name.as_str())
-        .collect::<Vec<_>>()
-        .join("\t");
+    let header = result.column_names().join("\t");
     let rows: Vec<String> = result
         .rows
         .iter()

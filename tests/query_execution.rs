@@ -85,8 +85,7 @@ async fn execute_stores_results() {
     assert!(app.pending_query.is_none());
 
     let results = app.results.unwrap();
-    let names: Vec<&str> = results.columns.iter().map(|c| c.name.as_str()).collect();
-    assert_eq!(names, vec!["val"]);
+    assert_eq!(results.column_names(), vec!["val"]);
     assert_eq!(results.rows.len(), 1);
 }
 

@@ -201,6 +201,24 @@ fn formatted_view_on_timestamptz_renders_via_chrono() {
 }
 
 #[test]
+fn formatted_view_on_unparseable_timestamptz_falls_back_to_raw() {
+    // Column declared as timestamptz but value isn't a valid timestamp.
+    // Formatter must not panic, must not lie — returns raw text.
+    let mut app = common::test_app();
+    seed_results_with_types(
+        &mut app,
+        &[("ts", Some("timestamptz"))],
+        vec![vec![Value::Text("not-a-timestamp".to_string())]],
+    );
+
+    press(&mut app, &[KeyCode::Char('v'), KeyCode::Tab]);
+
+    let state = app.cell_viewer.as_ref().unwrap();
+    assert_eq!(state.view, ViewMode::Formatted);
+    assert_eq!(state.displayed(), "not-a-timestamp");
+}
+
+#[test]
 fn formatted_view_on_text_column_with_iso_string_stays_raw() {
     // Column has no declared type → ISO string text must NOT be re-rendered.
     let mut app = common::test_app();

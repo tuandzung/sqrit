@@ -104,8 +104,7 @@ where
 async fn all_adapters_execute_select_literal() {
     for_each_adapter(|db, _| async move {
         let result = db.execute("SELECT 1 AS val").await.unwrap();
-        let names: Vec<&str> = result.columns.iter().map(|c| c.name.as_str()).collect();
-        assert_eq!(names, vec!["val"]);
+        assert_eq!(result.column_names(), vec!["val"]);
         assert_eq!(result.rows.len(), 1);
     })
     .await;
@@ -140,8 +139,7 @@ async fn all_adapters_create_insert_select_drop() {
             .await
             .unwrap();
         assert_eq!(sel.rows.len(), 2);
-        let names: Vec<&str> = sel.columns.iter().map(|c| c.name.as_str()).collect();
-        assert_eq!(names, vec!["id", "name"]);
+        assert_eq!(sel.column_names(), vec!["id", "name"]);
         assert_eq!(
             sel.rows[0].get("name").unwrap(),
             &Value::Text("alice".into())

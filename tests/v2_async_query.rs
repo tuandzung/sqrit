@@ -31,8 +31,7 @@ async fn execute_pending_returns_immediately() {
     assert_eq!(app.query_status, QueryStatus::Success);
     assert!(app.results.is_some());
     let result = app.results.unwrap();
-    let names: Vec<&str> = result.columns.iter().map(|c| c.name.as_str()).collect();
-    assert_eq!(names, vec!["val"]);
+    assert_eq!(result.column_names(), vec!["val"]);
     assert_eq!(result.rows.len(), 1);
 }
 
