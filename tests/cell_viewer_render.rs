@@ -30,7 +30,7 @@ fn open_cell(app: &mut App, column: &str, value: Value, view: ViewMode) {
     let mut row: HashMap<String, Value> = HashMap::new();
     row.insert(column.to_string(), value.clone());
     app.results = Some(QueryResult {
-        columns: vec![column.to_string()],
+        columns: vec![sqrit::db::types::ResultColumn::untyped(column)],
         rows: vec![row],
         rows_affected: None,
         total_count: None,

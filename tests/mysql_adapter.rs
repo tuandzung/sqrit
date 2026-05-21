@@ -137,7 +137,8 @@ async fn execute_select_returns_columns_and_rows() {
         .await
         .unwrap();
 
-    assert_eq!(result.columns, vec!["id", "name", "active"]);
+    let names: Vec<&str> = result.columns.iter().map(|c| c.name.as_str()).collect();
+    assert_eq!(names, vec!["id", "name", "active"]);
     assert_eq!(result.rows.len(), 3);
     assert_eq!(
         result.rows[0].get("name").unwrap(),
@@ -367,4 +368,57 @@ async fn execute_whitespace_and_comment_only_returns_error() {
 
     let comment = adapter.execute("-- just a comment\n").await;
     assert!(comment.is_err());
+}
+
+// Issue #45: MySQL surfaces SQL types via sqlx MySqlColumn::type_info().name().
+#[tokio::test]
+#[ignore]
+async fn select_surfaces_mysql_column_types() {
+    maybe_skip!();
+    let table = unique_table("types");
+    let adapter = setup().await;
+    adapter
+        .execute(&format!("DROP TABLE IF EXISTS `{}`", table))
+        .await
+        .unwrap();
+    adapter
+        .execute(&format!(
+            "CREATE TABLE `{}` (id INT AUTO_INCREMENT PRIMARY KEY, ts DATETIME, note VARCHAR(255))",
+            table
+        ))
+        .await
+        .unwrap();
+    adapter
+        .execute(&format!(
+            "INSERT INTO `{}` (ts, note) VALUES (NOW(), 'hi')",
+            table
+        ))
+        .await
+        .unwrap();
+
+    let result = adapter
+        .execute(&format!("SELECT id, ts, note FROM `{}`", table))
+        .await
+        .unwrap();
+
+    assert!(
+        result.columns[1]
+            .data_type
+            .as_deref()
+            .unwrap_or("")
+            .to_lowercase()
+            .contains("datetime"),
+        "ts column should expose DATETIME type, got: {:?}",
+        result.columns[1].data_type
+    );
+    assert!(
+        result.columns[2]
+            .data_type
+            .as_deref()
+            .unwrap_or("")
+            .to_lowercase()
+            .contains("varchar"),
+        "note column should expose VARCHAR type, got: {:?}",
+        result.columns[2].data_type
+    );
 }

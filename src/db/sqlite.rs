@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use super::types::{ColumnInfo, QueryResult, SchemaInfo, TableInfo, Value};
+use super::types::{ColumnInfo, QueryResult, ResultColumn, SchemaInfo, TableInfo, Value};
 use super::Database;
 
 pub struct SqliteAdapter {
@@ -43,13 +43,19 @@ impl Database for SqliteAdapter {
         tokio::task::spawn_blocking(move || {
             let conn = conn.lock().unwrap();
             let mut stmt = conn.prepare(&query)?;
-            let column_names: Vec<String> =
-                stmt.column_names().iter().map(|s| s.to_string()).collect();
+            let columns: Vec<ResultColumn> = stmt
+                .columns()
+                .iter()
+                .map(|c| ResultColumn {
+                    name: c.name().to_string(),
+                    data_type: c.decl_type().map(|s| s.to_string()),
+                })
+                .collect();
             let mut result_rows = vec![];
             let mut rows = stmt.query([])?;
             while let Some(row) = rows.next()? {
                 let mut map = std::collections::HashMap::new();
-                for (i, name) in column_names.iter().enumerate() {
+                for (i, col) in columns.iter().enumerate() {
                     let val: Value = match row.get_ref(i)? {
                         rusqlite::types::ValueRef::Null => Value::Null,
                         rusqlite::types::ValueRef::Integer(i) => Value::Integer(i),
@@ -59,7 +65,7 @@ impl Database for SqliteAdapter {
                         }
                         rusqlite::types::ValueRef::Blob(b) => Value::Blob(b.to_vec()),
                     };
-                    map.insert(name.clone(), val);
+                    map.insert(col.name.clone(), val);
                 }
                 result_rows.push(map);
             }
@@ -67,7 +73,7 @@ impl Database for SqliteAdapter {
             let changes = conn.changes();
 
             Ok(QueryResult {
-                columns: column_names,
+                columns,
                 rows: result_rows,
                 rows_affected: Some(changes),
                 total_count: None,
