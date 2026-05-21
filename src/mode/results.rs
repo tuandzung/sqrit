@@ -61,8 +61,7 @@ pub fn handle_key(key: KeyEvent, app: &mut App) {
         if let KeyCode::Char('c') = key.code {
             app.results_state.filter = None;
             if let Some(result) = app.results.as_ref() {
-                let result = result.clone();
-                app.results_state.snap_selection_to_visible(&result);
+                app.results_state.snap_selection_to_visible(result);
             }
         }
         return;
@@ -110,22 +109,14 @@ pub fn handle_key(key: KeyEvent, app: &mut App) {
         KeyCode::Char('q') => app.switch_pane(Mode::QueryNormal, crate::app::FocusedPane::Query),
         KeyCode::Char('e') => app.switch_pane(Mode::Explorer, crate::app::FocusedPane::Explorer),
         KeyCode::Char('r') => app.switch_pane(Mode::Results, crate::app::FocusedPane::Results),
-        KeyCode::Char('j') | KeyCode::Down => {
-            if let Some(result) = app.results.as_ref() {
-                let result = result.clone();
-                app.results_state.move_down_visible(&result);
-            } else {
-                app.results_state.move_down(total_rows);
-            }
-        }
-        KeyCode::Char('k') | KeyCode::Up => {
-            if let Some(result) = app.results.as_ref() {
-                let result = result.clone();
-                app.results_state.move_up_visible(&result);
-            } else {
-                app.results_state.move_up();
-            }
-        }
+        KeyCode::Char('j') | KeyCode::Down => match app.results.as_ref() {
+            Some(result) => app.results_state.move_down_visible(result),
+            None => app.results_state.move_down(total_rows),
+        },
+        KeyCode::Char('k') | KeyCode::Up => match app.results.as_ref() {
+            Some(result) => app.results_state.move_up_visible(result),
+            None => app.results_state.move_up(),
+        },
         KeyCode::Char('h') | KeyCode::Left => app.results_state.move_left(),
         KeyCode::Char('l') | KeyCode::Right => app.results_state.move_right(total_cols),
         KeyCode::Char('y') => {

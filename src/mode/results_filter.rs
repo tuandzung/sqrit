@@ -52,10 +52,7 @@ pub fn handle_key(key: KeyEvent, app: &mut App) {
                 }
             }
             app.mode = Mode::Results;
-            if let Some(result) = app.results.as_ref() {
-                let result = result.clone();
-                app.results_state.snap_selection_to_visible(&result);
-            }
+            snap(app);
         }
         KeyCode::Backspace => {
             if let Some(f) = app.results_state.filter.as_mut() {
@@ -75,7 +72,6 @@ pub fn handle_key(key: KeyEvent, app: &mut App) {
 
 fn snap(app: &mut App) {
     if let Some(result) = app.results.as_ref() {
-        let result = result.clone();
-        app.results_state.snap_selection_to_visible(&result);
+        app.results_state.snap_selection_to_visible(result);
     }
 }

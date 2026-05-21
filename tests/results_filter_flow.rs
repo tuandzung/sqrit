@@ -198,21 +198,7 @@ fn navigation_j_skips_filtered_out_rows() {
     let mut app = common::test_app();
     seed_three_rows(&mut app);
 
-    press(
-        &mut app,
-        &[
-            KeyCode::Char('/'),
-            KeyCode::Char('a'),
-            KeyCode::Enter,
-            KeyCode::Char('j'),
-        ],
-    );
-
-    // 'a' matches alice (0), Paris (Paris contains 'a'? no, P-a-r-i-s yes),
-    // carol (2), madrid (contains 'a')... All three may match. Use a stricter filter.
-    // Reset with new filter "li" matches alice + Berlin.
-    app.results_state.filter = None;
-    app.mode = Mode::Results;
+    // Filter "li" matches alice (li) + Berlin (li); carol/Madrid are hidden.
     press(
         &mut app,
         &[
@@ -223,13 +209,41 @@ fn navigation_j_skips_filtered_out_rows() {
         ],
     );
     let result = app.results.as_ref().unwrap();
-    let visible = app.results_state.visible_row_indices(result);
-    assert_eq!(visible, vec![0, 1], "alice (li) + Berlin (li)");
+    assert_eq!(app.results_state.visible_row_indices(result), vec![0, 1]);
 
     app.results_state.selected_row = 0;
     press(&mut app, &[KeyCode::Char('j')]);
     assert_eq!(
         app.results_state.selected_row, 1,
-        "j moves to next visible row"
+        "j moves to next visible row (skipping the hidden one)"
+    );
+}
+
+#[test]
+fn snap_clamps_scroll_row_within_filtered_set() {
+    let mut app = common::test_app();
+    seed_three_rows(&mut app);
+    app.results_state.visible_rows = 5;
+    app.results_state.scroll_row = 2;
+    app.results_state.selected_row = 2;
+
+    // Apply a filter that yields a single visible row — scroll_row=2 would
+    // render an empty table if not clamped.
+    press(
+        &mut app,
+        &[
+            KeyCode::Char('/'),
+            KeyCode::Char('b'),
+            KeyCode::Char('o'),
+            KeyCode::Enter,
+        ],
+    );
+
+    let result = app.results.as_ref().unwrap();
+    let visible = app.results_state.visible_row_indices(result);
+    assert_eq!(visible, vec![1]);
+    assert_eq!(
+        app.results_state.scroll_row, 0,
+        "scroll_row must clamp to max(0, visible.len() - visible_rows) when the filtered set shrinks"
     );
 }

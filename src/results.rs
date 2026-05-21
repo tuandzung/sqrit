@@ -126,7 +126,7 @@ impl ResultsState {
         } else if let Some(&first) = visible.first() {
             self.selected_row = first;
         }
-        self.adjust_scroll();
+        self.adjust_scroll_to(&visible);
     }
 
     pub fn move_up_visible(&mut self, result: &QueryResult) {
@@ -138,7 +138,7 @@ impl ResultsState {
         } else if let Some(&first) = visible.first() {
             self.selected_row = first;
         }
-        self.adjust_scroll();
+        self.adjust_scroll_to(&visible);
     }
 
     pub fn snap_selection_to_visible(&mut self, result: &QueryResult) {
@@ -151,6 +151,24 @@ impl ResultsState {
         if !visible.contains(&self.selected_row) {
             self.selected_row = visible[0];
             self.scroll_row = 0;
+        }
+        self.adjust_scroll_to(&visible);
+    }
+
+    fn adjust_scroll_to(&mut self, visible: &[usize]) {
+        let Some(pos) = visible.iter().position(|&i| i == self.selected_row) else {
+            self.scroll_row = 0;
+            return;
+        };
+        let max_scroll = visible.len().saturating_sub(self.visible_rows);
+        let bottom = self.scroll_row + self.visible_rows;
+        if pos >= bottom {
+            self.scroll_row = pos + 1 - self.visible_rows;
+        } else if pos < self.scroll_row {
+            self.scroll_row = pos;
+        }
+        if self.scroll_row > max_scroll {
+            self.scroll_row = max_scroll;
         }
     }
 
