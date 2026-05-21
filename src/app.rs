@@ -217,6 +217,29 @@ impl App {
                     crate::mode::theme_picker::enter(self, origin);
                     return;
                 }
+                KeyCode::Char('q') => {
+                    self.should_quit = true;
+                    return;
+                }
+                KeyCode::Char('c') => {
+                    self.mode = Mode::Picker;
+                    return;
+                }
+                KeyCode::Char('x') => {
+                    self.db = None;
+                    self.active_connection = None;
+                    self.explorer_state.schema = None;
+                    self.mode = Mode::Picker;
+                    return;
+                }
+                KeyCode::Char('z') => {
+                    self.status_message = "Cancel not yet implemented (T7)".to_string();
+                    return;
+                }
+                KeyCode::Char('h') => {
+                    self.status_message = "Query history not yet implemented (T5)".to_string();
+                    return;
+                }
                 _ => {
                     // Unknown space combo — pass through to mode handler
                 }
