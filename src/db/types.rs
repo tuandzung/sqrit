@@ -63,6 +63,19 @@ impl QueryResult {
     }
 }
 
+pub fn sqlx_result_columns<C>(cols: &[C]) -> Vec<ResultColumn>
+where
+    C: sqlx::Column,
+{
+    use sqlx::TypeInfo;
+    cols.iter()
+        .map(|c| ResultColumn {
+            name: c.name().to_string(),
+            data_type: Some(c.type_info().name().to_string()),
+        })
+        .collect()
+}
+
 #[derive(Debug, Clone)]
 pub struct ColumnInfo {
     pub name: String,

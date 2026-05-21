@@ -215,6 +215,11 @@ fn formatted_view_on_unparseable_timestamptz_falls_back_to_raw() {
 
     let state = app.cell_viewer.as_ref().unwrap();
     assert_eq!(state.view, ViewMode::Formatted);
+    assert_eq!(
+        state.column_type.as_deref(),
+        Some("timestamptz"),
+        "type hint must reach the formatter — otherwise this test trivially passes"
+    );
     assert_eq!(state.displayed(), "not-a-timestamp");
 }
 
