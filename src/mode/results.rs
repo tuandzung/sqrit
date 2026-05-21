@@ -72,32 +72,36 @@ pub fn handle_key(key: KeyEvent, app: &mut App) {
         app.results_state.pending_yank = false;
         match key.code {
             KeyCode::Char('c') => {
-                if let Some(ref result) = app.results {
-                    if let Some(text) = clipboard::format_cell(
-                        result,
+                let payload = app.results.as_ref().and_then(|r| {
+                    clipboard::format_cell(
+                        r,
                         app.results_state.selected_row,
                         app.results_state.selected_col,
-                    ) {
-                        let _ = clipboard::copy_to_clipboard(&text);
-                        app.status_message = format!("Copied cell: {}", text);
-                    }
+                    )
+                });
+                if let Some(text) = payload {
+                    let _ = app.clipboard_writer.copy(&text);
+                    app.status_message = format!("Copied cell: {}", text);
                 }
             }
             KeyCode::Char('y') => {
-                if let Some(ref result) = app.results {
-                    if let Some(text) =
-                        clipboard::format_row(result, app.results_state.selected_row)
-                    {
-                        let _ = clipboard::copy_to_clipboard(&text);
-                        app.status_message = format!("Copied row: {}", text);
-                    }
+                let payload = app
+                    .results
+                    .as_ref()
+                    .and_then(|r| clipboard::format_row(r, app.results_state.selected_row));
+                if let Some(text) = payload {
+                    let _ = app.clipboard_writer.copy(&text);
+                    app.status_message = format!("Copied row: {}", text);
                 }
             }
             KeyCode::Char('a') => {
-                if let Some(ref result) = app.results {
-                    let text = clipboard::format_all(result);
-                    let _ = clipboard::copy_to_clipboard(&text);
-                    app.status_message = format!("Copied all ({} rows)", result.rows.len());
+                let payload = app
+                    .results
+                    .as_ref()
+                    .map(|r| (clipboard::format_all(r), r.rows.len()));
+                if let Some((text, row_count)) = payload {
+                    let _ = app.clipboard_writer.copy(&text);
+                    app.status_message = format!("Copied all ({} rows)", row_count);
                 }
             }
             _ => {}

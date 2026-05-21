@@ -2,7 +2,6 @@ use crossterm::event::{KeyCode, KeyEvent};
 
 use crate::app::App;
 use crate::cell_viewer::{format_value, ViewMode};
-use crate::clipboard;
 use crate::db::types::Value;
 use crate::mode::{KeyBinding, Mode, ModeHandler};
 
@@ -109,11 +108,11 @@ fn toggle_view(app: &mut App) {
 }
 
 fn copy_displayed(app: &mut App) {
-    let Some(state) = app.cell_viewer.as_ref() else {
-        return;
+    let text = match app.cell_viewer.as_ref() {
+        Some(state) => state.displayed(),
+        None => return,
     };
-    let text = state.displayed();
-    let _ = clipboard::copy_to_clipboard(&text);
+    let _ = app.clipboard_writer.copy(&text);
     app.status_message = format!("Copied cell ({} chars)", text.chars().count());
 }
 
