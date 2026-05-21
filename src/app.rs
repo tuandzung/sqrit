@@ -86,6 +86,7 @@ pub struct App {
     pub themes_dir: std::path::PathBuf,
     pub theme_picker: Option<crate::mode::theme_picker::ThemePickerState>,
     pub help: Option<crate::mode::help::HelpState>,
+    pub cell_viewer: Option<crate::mode::cell_viewer::CellViewerState>,
     pub app_config_path: std::path::PathBuf,
 }
 
@@ -138,6 +139,7 @@ impl App {
             themes_dir,
             theme_picker: None,
             help: None,
+            cell_viewer: None,
             app_config_path,
         })
     }
@@ -416,6 +418,61 @@ impl App {
         if self.mode == Mode::Help && self.help.is_some() {
             self.render_help(frame, area);
         }
+        if self.mode == Mode::CellViewer && self.cell_viewer.is_some() {
+            self.render_cell_viewer(frame, area);
+        }
+    }
+
+    /// Modal rect for the cell viewer. Width ~60% of the terminal (clamped
+    /// to `max(title_w + 4, 20)` minimum so very narrow terminals still
+    /// produce something usable); height ~80%. Centered. Pure — exposed for
+    /// testability.
+    pub fn cell_viewer_modal_rect(area: Rect, title_w: usize) -> Rect {
+        let min_w = (title_w.saturating_add(4) as u16).max(20);
+        let desired_w = ((area.width as u32 * 60) / 100) as u16;
+        let w = desired_w.max(min_w).min(area.width);
+        let desired_h = ((area.height as u32 * 80) / 100) as u16;
+        let h = desired_h.max(5).min(area.height);
+        let x = area.x + area.width.saturating_sub(w) / 2;
+        let y = area.y + area.height.saturating_sub(h) / 2;
+        Rect {
+            x,
+            y,
+            width: w,
+            height: h,
+        }
+    }
+
+    fn render_cell_viewer(&self, frame: &mut ratatui::Frame, area: Rect) {
+        let Some(state) = self.cell_viewer.as_ref() else {
+            return;
+        };
+        let view_label = match state.view {
+            crate::cell_viewer::ViewMode::Raw => "raw",
+            crate::cell_viewer::ViewMode::Formatted => "formatted",
+        };
+        let title = format!(" Cell — {} ({}) ", state.column, view_label);
+        let title_w = title.chars().count();
+        let modal = Self::cell_viewer_modal_rect(area, title_w);
+        if modal.width == 0 || modal.height == 0 {
+            return;
+        }
+        frame.render_widget(Clear, modal);
+
+        let block = Block::default()
+            .title(title)
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(self.theme.border_focused))
+            .style(Style::default().bg(self.theme.bg).fg(self.theme.fg));
+        let inner = block.inner(modal);
+        frame.render_widget(block, modal);
+
+        let body = state.displayed();
+        let paragraph = Paragraph::new(body)
+            .wrap(ratatui::widgets::Wrap { trim: false })
+            .scroll((state.scroll, 0))
+            .style(Style::default().fg(self.theme.fg));
+        frame.render_widget(paragraph, inner);
     }
 
     /// Rendered title for the help overlay block. Single source of truth

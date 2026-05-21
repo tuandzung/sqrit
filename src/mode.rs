@@ -1,3 +1,4 @@
+pub mod cell_viewer;
 pub mod editor;
 pub mod explorer;
 pub mod help;
@@ -36,6 +37,7 @@ pub enum Mode {
     Results,
     ThemePicker,
     Help,
+    CellViewer,
 }
 
 impl Mode {
@@ -49,6 +51,7 @@ impl Mode {
             Mode::Results => &results::ResultsHandler,
             Mode::ThemePicker => &theme_picker::ThemePickerHandler,
             Mode::Help => &help::HelpHandler,
+            Mode::CellViewer => &cell_viewer::CellViewerHandler,
         }
     }
 
@@ -65,6 +68,7 @@ impl Mode {
             Mode::Results => "RESULTS",
             Mode::ThemePicker => "THEME",
             Mode::Help => "HELP",
+            Mode::CellViewer => "CELL",
         }
     }
 }

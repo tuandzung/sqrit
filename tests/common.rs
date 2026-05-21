@@ -50,6 +50,7 @@ pub fn test_app() -> App {
         themes_dir: std::path::PathBuf::new(),
         theme_picker: None,
         help: None,
+        cell_viewer: None,
         app_config_path: std::path::PathBuf::new(),
     }
 }
