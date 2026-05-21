@@ -107,7 +107,10 @@ fn make_results_app(rows: usize) -> App {
     app.query_status = QueryStatus::Success;
 
     let mut results = sqrit::db::types::QueryResult::empty();
-    results.columns = vec!["a".to_string(), "b".to_string()];
+    results.columns = vec![
+        sqrit::db::types::ResultColumn::untyped("a"),
+        sqrit::db::types::ResultColumn::untyped("b"),
+    ];
     for i in 0..rows {
         let mut row = std::collections::HashMap::new();
         row.insert("a".to_string(), sqrit::db::types::Value::Integer(i as i64));
@@ -150,6 +153,6 @@ fn results_pane_has_data() {
     let results = app.results.as_ref().unwrap();
     assert_eq!(results.columns.len(), 2);
     assert_eq!(results.rows.len(), 3);
-    assert_eq!(results.columns[0], "a");
-    assert_eq!(results.columns[1], "b");
+    assert_eq!(results.columns[0].name, "a");
+    assert_eq!(results.columns[1].name, "b");
 }

@@ -6,7 +6,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use sqrit::app::App;
 use sqrit::cell_viewer::ViewMode;
-use sqrit::db::types::{QueryResult, Value};
+use sqrit::db::types::{QueryResult, ResultColumn, Value};
 use sqrit::mode::Mode;
 
 fn key(code: KeyCode) -> KeyEvent {
@@ -20,13 +20,24 @@ fn press(app: &mut App, codes: &[KeyCode]) {
 }
 
 fn seed_results(app: &mut App, columns: &[&str], rows: Vec<Vec<Value>>) {
-    let columns: Vec<String> = columns.iter().map(|s| s.to_string()).collect();
+    let typed: Vec<(&str, Option<&str>)> = columns.iter().map(|n| (*n, None)).collect();
+    seed_results_with_types(app, &typed, rows);
+}
+
+fn seed_results_with_types(app: &mut App, columns: &[(&str, Option<&str>)], rows: Vec<Vec<Value>>) {
+    let columns: Vec<ResultColumn> = columns
+        .iter()
+        .map(|(name, ty)| ResultColumn {
+            name: name.to_string(),
+            data_type: ty.map(|s| s.to_string()),
+        })
+        .collect();
     let rows: Vec<HashMap<String, Value>> = rows
         .into_iter()
         .map(|values| {
             columns
                 .iter()
-                .cloned()
+                .map(|c| c.name.clone())
                 .zip(values)
                 .collect::<HashMap<_, _>>()
         })
@@ -146,6 +157,86 @@ fn esc_closes_cell_viewer_and_returns_to_results() {
 
     assert_eq!(app.mode, Mode::Results);
     assert!(app.cell_viewer.is_none());
+}
+
+// --- Slice (issue #45): cell viewer routes column data_type to formatter ---
+
+#[test]
+fn v_on_timestamptz_column_opens_with_column_type_hint() {
+    let mut app = common::test_app();
+    seed_results_with_types(
+        &mut app,
+        &[("ts", Some("timestamptz"))],
+        vec![vec![Value::Text("2026-05-21T03:00:00Z".to_string())]],
+    );
+
+    press(&mut app, &[KeyCode::Char('v')]);
+
+    let state = app.cell_viewer.as_ref().expect("cell viewer open");
+    assert_eq!(state.column_type.as_deref(), Some("timestamptz"));
+}
+
+#[test]
+fn formatted_view_on_timestamptz_renders_via_chrono() {
+    let mut app = common::test_app();
+    seed_results_with_types(
+        &mut app,
+        &[("ts", Some("timestamptz"))],
+        vec![vec![Value::Text("2026-05-21T03:00:00Z".to_string())]],
+    );
+
+    press(&mut app, &[KeyCode::Char('v'), KeyCode::Tab]);
+
+    let displayed = app.cell_viewer.as_ref().unwrap().displayed();
+    assert!(
+        !displayed.contains('T'),
+        "formatted timestamp should use a space separator, got: {:?}",
+        displayed
+    );
+    assert!(
+        displayed.contains('+') || displayed.contains('-'),
+        "formatted timestamp should include a numeric offset, got: {:?}",
+        displayed
+    );
+}
+
+#[test]
+fn formatted_view_on_unparseable_timestamptz_falls_back_to_raw() {
+    // Column declared as timestamptz but value isn't a valid timestamp.
+    // Formatter must not panic, must not lie — returns raw text.
+    let mut app = common::test_app();
+    seed_results_with_types(
+        &mut app,
+        &[("ts", Some("timestamptz"))],
+        vec![vec![Value::Text("not-a-timestamp".to_string())]],
+    );
+
+    press(&mut app, &[KeyCode::Char('v'), KeyCode::Tab]);
+
+    let state = app.cell_viewer.as_ref().unwrap();
+    assert_eq!(state.view, ViewMode::Formatted);
+    assert_eq!(
+        state.column_type.as_deref(),
+        Some("timestamptz"),
+        "type hint must reach the formatter — otherwise this test trivially passes"
+    );
+    assert_eq!(state.displayed(), "not-a-timestamp");
+}
+
+#[test]
+fn formatted_view_on_text_column_with_iso_string_stays_raw() {
+    // Column has no declared type → ISO string text must NOT be re-rendered.
+    let mut app = common::test_app();
+    seed_results_with_types(
+        &mut app,
+        &[("note", None)],
+        vec![vec![Value::Text("2026-05-21T03:00:00Z".to_string())]],
+    );
+
+    press(&mut app, &[KeyCode::Char('v'), KeyCode::Tab]);
+
+    let displayed = app.cell_viewer.as_ref().unwrap().displayed();
+    assert_eq!(displayed, "2026-05-21T03:00:00Z");
 }
 
 #[test]

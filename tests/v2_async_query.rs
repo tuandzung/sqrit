@@ -31,7 +31,7 @@ async fn execute_pending_returns_immediately() {
     assert_eq!(app.query_status, QueryStatus::Success);
     assert!(app.results.is_some());
     let result = app.results.unwrap();
-    assert_eq!(result.columns, vec!["val".to_string()]);
+    assert_eq!(result.column_names(), vec!["val"]);
     assert_eq!(result.rows.len(), 1);
 }
 
@@ -143,7 +143,7 @@ impl sqrit::db::Database for SchemaFailAdapter {
     }
     async fn execute(&self, _query: &str) -> anyhow::Result<sqrit::db::types::QueryResult> {
         Ok(sqrit::db::types::QueryResult {
-            columns: vec!["val".to_string()],
+            columns: vec![sqrit::db::types::ResultColumn::untyped("val")],
             rows: vec![{
                 let mut map = std::collections::HashMap::new();
                 map.insert("val".to_string(), sqrit::db::types::Value::Integer(1));

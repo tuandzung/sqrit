@@ -1,9 +1,9 @@
 use crate::db::types::QueryResult;
 
 pub fn format_cell(result: &QueryResult, row: usize, col: usize) -> Option<String> {
-    let col_name = result.columns.get(col)?;
+    let col = result.columns.get(col)?;
     let r = result.rows.get(row)?;
-    r.get(col_name).map(|v| v.to_string())
+    r.get(&col.name).map(|v| v.to_string())
 }
 
 pub fn format_row(result: &QueryResult, row: usize) -> Option<String> {
@@ -11,13 +11,13 @@ pub fn format_row(result: &QueryResult, row: usize) -> Option<String> {
     let vals: Vec<String> = result
         .columns
         .iter()
-        .map(|c| r.get(c).map(|v| v.to_string()).unwrap_or_default())
+        .map(|c| r.get(&c.name).map(|v| v.to_string()).unwrap_or_default())
         .collect();
     Some(vals.join("\t"))
 }
 
 pub fn format_all(result: &QueryResult) -> String {
-    let header = result.columns.join("\t");
+    let header = result.column_names().join("\t");
     let rows: Vec<String> = result
         .rows
         .iter()
@@ -34,7 +34,7 @@ pub fn format_csv(result: &QueryResult) -> String {
     let header = result
         .columns
         .iter()
-        .map(|c| csv_escape(c))
+        .map(|c| csv_escape(&c.name))
         .collect::<Vec<_>>()
         .join(",");
     let rows: Vec<String> = result
@@ -45,7 +45,7 @@ pub fn format_csv(result: &QueryResult) -> String {
                 .columns
                 .iter()
                 .map(|c| {
-                    r.get(c)
+                    r.get(&c.name)
                         .map(|v| csv_escape(&v.to_string()))
                         .unwrap_or_default()
                 })
@@ -68,8 +68,8 @@ pub fn format_json(result: &QueryResult) -> String {
                 .columns
                 .iter()
                 .map(|c| {
-                    let val = r.get(c).map(|v| v.to_string()).unwrap_or_default();
-                    format!("{}:{}", json_escape(c), json_escape(&val))
+                    let val = r.get(&c.name).map(|v| v.to_string()).unwrap_or_default();
+                    format!("{}:{}", json_escape(&c.name), json_escape(&val))
                 })
                 .collect();
             format!("{{{}}}", pairs.join(","))

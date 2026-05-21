@@ -2,12 +2,12 @@ mod common;
 
 use sqrit::app::{App, FocusedPane, QueryStatus};
 use sqrit::clipboard::{format_all, format_cell, format_csv, format_json, format_row};
-use sqrit::db::types::{QueryResult, Value};
+use sqrit::db::types::{QueryResult, ResultColumn, Value};
 use sqrit::mode::Mode;
 
 fn make_result() -> QueryResult {
     let mut result = QueryResult::empty();
-    result.columns = vec!["name".to_string(), "age".to_string()];
+    result.columns = vec![ResultColumn::untyped("name"), ResultColumn::untyped("age")];
     let mut r1 = std::collections::HashMap::new();
     r1.insert("name".to_string(), Value::Text("alice".to_string()));
     r1.insert("age".to_string(), Value::Integer(30));
@@ -64,7 +64,7 @@ fn format_csv_returns_csv() {
 #[test]
 fn format_csv_escapes() {
     let mut result = QueryResult::empty();
-    result.columns = vec!["name".to_string()];
+    result.columns = vec![ResultColumn::untyped("name")];
     let mut r = std::collections::HashMap::new();
     r.insert("name".to_string(), Value::Text("a,b".to_string()));
     result.rows.push(r);

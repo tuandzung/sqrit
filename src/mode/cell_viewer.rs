@@ -80,12 +80,11 @@ pub fn open(app: &mut App, origin: Mode) {
     let Some(row) = result.rows.get(row_idx) else {
         return;
     };
-    let value = row.get(&column).cloned().unwrap_or(Value::Null);
+    let value = row.get(&column.name).cloned().unwrap_or(Value::Null);
     app.cell_viewer = Some(CellViewerState {
         origin,
-        column,
-        column_type: None, // column-type lookup hooks in later; the formatter
-        // is type-aware but defaults to text-only behavior.
+        column: column.name,
+        column_type: column.data_type,
         value,
         view: ViewMode::Raw,
         scroll: 0,

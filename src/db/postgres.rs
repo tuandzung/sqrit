@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 use sqlx::postgres::PgPoolOptions;
-use sqlx::{Column, Row, TypeInfo, ValueRef};
+use sqlx::{Row, TypeInfo, ValueRef};
 
-use super::types::{ColumnInfo, QueryResult, SchemaInfo, TableInfo, Value};
+use super::types::{sqlx_result_columns, ColumnInfo, QueryResult, SchemaInfo, TableInfo, Value};
 use super::Database;
 
 fn pg_row_to_value(row: &sqlx::postgres::PgRow, i: usize) -> Value {
@@ -100,14 +100,10 @@ impl Database for PgAdapter {
 
         if is_select {
             let rows = sqlx::query(query).fetch_all(pool).await?;
-            let columns: Vec<String> = if rows.is_empty() {
+            let columns = if rows.is_empty() {
                 vec![]
             } else {
-                rows[0]
-                    .columns()
-                    .iter()
-                    .map(|c| c.name().to_string())
-                    .collect()
+                sqlx_result_columns(rows[0].columns())
             };
 
             let result_rows: Vec<_> = rows
@@ -116,7 +112,7 @@ impl Database for PgAdapter {
                     let mut map = std::collections::HashMap::new();
                     for (i, col) in columns.iter().enumerate() {
                         let val = pg_row_to_value(&row, i);
-                        map.insert(col.clone(), val);
+                        map.insert(col.name.clone(), val);
                     }
                     map
                 })

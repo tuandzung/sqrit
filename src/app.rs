@@ -844,7 +844,8 @@ impl App {
                     .columns
                     .iter()
                     .map(|c| {
-                        Cell::from(c.as_str()).style(Style::default().fg(self.theme.border_focused))
+                        Cell::from(c.name.as_str())
+                            .style(Style::default().fg(self.theme.border_focused))
                     })
                     .collect();
                 let header = TableRow::new(header_cells)
@@ -861,7 +862,10 @@ impl App {
                             .columns
                             .iter()
                             .map(|col| {
-                                let val = row.get(col).map(|v| v.to_string()).unwrap_or_default();
+                                let val = row
+                                    .get(&col.name)
+                                    .map(|v| v.to_string())
+                                    .unwrap_or_default();
                                 Cell::from(val)
                             })
                             .collect();

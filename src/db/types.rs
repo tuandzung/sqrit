@@ -26,8 +26,23 @@ impl std::fmt::Display for Value {
 }
 
 #[derive(Debug, Clone)]
+pub struct ResultColumn {
+    pub name: String,
+    pub data_type: Option<String>,
+}
+
+impl ResultColumn {
+    pub fn untyped(name: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            data_type: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct QueryResult {
-    pub columns: Vec<String>,
+    pub columns: Vec<ResultColumn>,
     pub rows: Vec<Row>,
     pub rows_affected: Option<u64>,
     pub total_count: Option<u64>,
@@ -42,6 +57,23 @@ impl QueryResult {
             total_count: None,
         }
     }
+
+    pub fn column_names(&self) -> Vec<&str> {
+        self.columns.iter().map(|c| c.name.as_str()).collect()
+    }
+}
+
+pub fn sqlx_result_columns<C>(cols: &[C]) -> Vec<ResultColumn>
+where
+    C: sqlx::Column,
+{
+    use sqlx::TypeInfo;
+    cols.iter()
+        .map(|c| ResultColumn {
+            name: c.name().to_string(),
+            data_type: Some(c.type_info().name().to_string()),
+        })
+        .collect()
 }
 
 #[derive(Debug, Clone)]

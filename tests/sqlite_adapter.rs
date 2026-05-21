@@ -72,7 +72,7 @@ async fn execute_select_returns_columns_and_rows() {
         .await
         .unwrap();
 
-    assert_eq!(result.columns, vec!["id", "name", "active"]);
+    assert_eq!(result.column_names(), vec!["id", "name", "active"]);
     assert_eq!(result.rows.len(), 2);
     assert_eq!(
         result.rows[0].get("name").unwrap(),
@@ -200,4 +200,57 @@ async fn connect_to_invalid_path_returns_error() {
     let mut adapter = SqliteAdapter::new("/nonexistent/dir/impossible.db");
     let result = adapter.connect().await;
     assert!(result.is_err());
+}
+
+// Issue #45: declared SQL types surface on QueryResult.columns[i].data_type.
+#[tokio::test]
+async fn select_surfaces_declared_column_types() {
+    let (mut adapter, _file) = setup().await;
+    adapter.connect().await.unwrap();
+    adapter
+        .execute("CREATE TABLE events (id INTEGER PRIMARY KEY, ts TIMESTAMP, label TEXT)")
+        .await
+        .unwrap();
+
+    let result = adapter
+        .execute("SELECT id, ts, label FROM events")
+        .await
+        .unwrap();
+
+    assert_eq!(
+        result.columns[0]
+            .data_type
+            .as_deref()
+            .map(str::to_lowercase),
+        Some("integer".to_string())
+    );
+    assert!(
+        result.columns[1]
+            .data_type
+            .as_deref()
+            .unwrap_or("")
+            .to_lowercase()
+            .contains("timestamp"),
+        "ts column should expose timestamp decl type, got: {:?}",
+        result.columns[1].data_type
+    );
+    assert_eq!(
+        result.columns[2]
+            .data_type
+            .as_deref()
+            .map(str::to_lowercase),
+        Some("text".to_string())
+    );
+}
+
+// Issue #45: SQLite expressions legitimately have no declared type.
+#[tokio::test]
+async fn select_expression_has_no_declared_type() {
+    let (mut adapter, _file) = setup().await;
+    adapter.connect().await.unwrap();
+
+    let result = adapter.execute("SELECT 1 + 1 AS x").await.unwrap();
+
+    assert_eq!(result.columns[0].name, "x");
+    assert_eq!(result.columns[0].data_type, None);
 }
