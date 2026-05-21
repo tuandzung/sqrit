@@ -7,6 +7,8 @@ const ALL_MODES: &[Mode] = &[
     Mode::QueryInsert,
     Mode::Results,
     Mode::ThemePicker,
+    Mode::Help,
+    Mode::CellViewer,
 ];
 
 #[test]

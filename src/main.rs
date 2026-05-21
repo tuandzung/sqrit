@@ -1,5 +1,6 @@
 pub mod app;
 pub mod autocomplete;
+pub mod cell_viewer;
 pub mod clipboard;
 pub mod config;
 pub mod db;

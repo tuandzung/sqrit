@@ -20,6 +20,10 @@ const BINDINGS: &[KeyBinding] = &[
         action: "Copy cell / row / all to clipboard",
     },
     KeyBinding {
+        key: "v",
+        action: "Open the selected cell in the viewer modal",
+    },
+    KeyBinding {
         key: "q / e / r",
         action: "Focus Query / Explorer / Results pane",
     },
@@ -91,6 +95,9 @@ pub fn handle_key(key: KeyEvent, app: &mut App) {
         KeyCode::Char('l') | KeyCode::Right => app.results_state.move_right(total_cols),
         KeyCode::Char('y') => {
             app.results_state.pending_yank = true;
+        }
+        KeyCode::Char('v') => {
+            crate::mode::cell_viewer::open(app, Mode::Results);
         }
         KeyCode::PageDown =>
         {
