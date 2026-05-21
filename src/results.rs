@@ -4,10 +4,16 @@ pub fn row_matches(row: &Row, columns: &[ResultColumn], filter: &str) -> bool {
     if filter.is_empty() {
         return true;
     }
-    let needle = filter.to_lowercase();
+    row_matches_lowered(row, columns, &filter.to_lowercase())
+}
+
+fn row_matches_lowered(row: &Row, columns: &[ResultColumn], needle_lower: &str) -> bool {
+    if needle_lower.is_empty() {
+        return true;
+    }
     columns.iter().any(|c| {
         row.get(&c.name)
-            .map(|v| v.to_string().to_lowercase().contains(&needle))
+            .map(|v| v.to_string().to_lowercase().contains(needle_lower))
             .unwrap_or(false)
     })
 }
@@ -108,11 +114,12 @@ impl ResultsState {
         let Some(term) = self.filter.as_deref() else {
             return (0..result.rows.len()).collect();
         };
+        let needle = term.to_lowercase();
         result
             .rows
             .iter()
             .enumerate()
-            .filter(|(_, r)| row_matches(r, &result.columns, term))
+            .filter(|(_, r)| row_matches_lowered(r, &result.columns, &needle))
             .map(|(i, _)| i)
             .collect()
     }
