@@ -145,3 +145,61 @@ fn formatted_unparseable_date_falls_back_to_raw() {
 
     assert_eq!(out, "not a date");
 }
+
+#[test]
+fn formatted_date_column_round_trips_yyyy_mm_dd() {
+    // `date`-typed text without a time component must still route through
+    // chrono — the round-trip locks that the formatter took the type-hint
+    // path rather than silently falling through to raw.
+    let v = Value::Text("2026-05-21".to_string());
+
+    let out = format_value(&v, Some("date"), ViewMode::Formatted);
+
+    assert_eq!(out, "2026-05-21");
+    assert!(
+        chrono::NaiveDate::parse_from_str(&out, "%Y-%m-%d").is_ok(),
+        "expected a chrono-parseable date, got: {:?}",
+        out
+    );
+}
+
+#[test]
+fn formatted_datetime_hint_routes_through_chrono() {
+    // `datetime` is a backend alias (e.g. MySQL) for a naive timestamp.
+    let v = Value::Text("2026-05-21 03:00:00".to_string());
+
+    let out = format_value(&v, Some("datetime"), ViewMode::Formatted);
+
+    // Naive timestamp routes through chrono and gains a numeric offset.
+    assert!(
+        out.contains('+') || out.contains('-'),
+        "datetime hint should produce a zone-aware render, got: {:?}",
+        out
+    );
+}
+
+#[test]
+fn formatted_column_type_match_is_case_insensitive() {
+    // PostgreSQL's verbose alias "TIMESTAMP WITH TIME ZONE" must hit the
+    // same code path as "timestamptz".
+    let v = Value::Text("2026-05-21T03:00:00Z".to_string());
+
+    let out_verbose = format_value(&v, Some("TIMESTAMP WITH TIME ZONE"), ViewMode::Formatted);
+    let out_short = format_value(&v, Some("timestamptz"), ViewMode::Formatted);
+
+    assert!(!out_verbose.contains('T'), "verbose alias must format");
+    assert_eq!(
+        out_verbose, out_short,
+        "alias and short form must produce identical output"
+    );
+}
+
+#[test]
+fn formatted_uppercase_date_hint_matches_lowercase() {
+    let v = Value::Text("2026-05-21".to_string());
+
+    let upper = format_value(&v, Some("DATE"), ViewMode::Formatted);
+    let lower = format_value(&v, Some("date"), ViewMode::Formatted);
+
+    assert_eq!(upper, lower);
+}

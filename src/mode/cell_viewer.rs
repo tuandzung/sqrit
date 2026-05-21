@@ -62,8 +62,8 @@ pub fn handle_key(key: KeyEvent, app: &mut App) {
         KeyCode::Esc => close(app),
         KeyCode::Tab => toggle_view(app),
         KeyCode::Char('y') => copy_displayed(app),
-        KeyCode::Char('j') | KeyCode::Down => scroll(app, 1),
-        KeyCode::Char('k') | KeyCode::Up => scroll(app, -1),
+        KeyCode::Char('j') | KeyCode::Down => scroll_down(app),
+        KeyCode::Char('k') | KeyCode::Up => scroll_up(app),
         _ => {}
     }
 }
@@ -118,12 +118,14 @@ fn copy_displayed(app: &mut App) {
     app.status_message = format!("Copied cell ({} chars)", text.chars().count());
 }
 
-fn scroll(app: &mut App, delta: i32) {
+fn scroll_down(app: &mut App) {
     if let Some(state) = app.cell_viewer.as_mut() {
-        if delta < 0 {
-            state.scroll = state.scroll.saturating_sub(delta.unsigned_abs() as u16);
-        } else {
-            state.scroll = state.scroll.saturating_add(delta as u16);
-        }
+        state.scroll = state.scroll.saturating_add(1);
+    }
+}
+
+fn scroll_up(app: &mut App) {
+    if let Some(state) = app.cell_viewer.as_mut() {
+        state.scroll = state.scroll.saturating_sub(1);
     }
 }
