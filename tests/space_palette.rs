@@ -171,3 +171,37 @@ fn space_then_q_in_query_insert_does_not_quit() {
     assert!(!app.should_quit);
     assert_eq!(app.editor.text(), " q");
 }
+
+// --- Unknown palette combo falls through to the mode handler ---
+
+#[test]
+fn space_then_unknown_key_passes_through() {
+    let mut app = common::test_app();
+    let initial_mode = app.mode;
+    let initial_status = app.status_message.clone();
+
+    // 'm' is unbound in QueryNormal and not part of the palette.
+    press(&mut app, &[KeyCode::Char(' '), KeyCode::Char('m')]);
+
+    assert!(!app.pending_space, "pending_space must be cleared");
+    assert!(!app.should_quit);
+    assert_eq!(app.status_message, initial_status);
+    assert_eq!(app.mode, initial_mode);
+}
+
+// --- Modifier-bearing keys do not dispatch palette actions ---
+
+#[test]
+fn space_then_modified_key_does_not_dispatch_palette() {
+    let mut app = common::test_app();
+
+    // Press space (arms palette), then Ctrl+q (modified).
+    app.handle_key_event(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE));
+    app.handle_key_event(KeyEvent::new(KeyCode::Char('q'), KeyModifiers::CONTROL));
+
+    assert!(
+        !app.should_quit,
+        "Ctrl+q after space must not trigger palette quit"
+    );
+    assert!(!app.pending_space);
+}
