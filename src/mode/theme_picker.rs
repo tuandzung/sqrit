@@ -1,8 +1,35 @@
 use crossterm::event::{KeyCode, KeyEvent};
 
 use crate::app::App;
-use crate::mode::Mode;
+use crate::mode::{KeyBinding, Mode, ModeHandler};
 use crate::theme::Theme;
+
+pub struct ThemePickerHandler;
+
+const BINDINGS: &[KeyBinding] = &[
+    KeyBinding {
+        key: "Up / Down",
+        action: "Preview next / previous theme",
+    },
+    KeyBinding {
+        key: "Enter",
+        action: "Apply the previewed theme and persist it",
+    },
+    KeyBinding {
+        key: "Esc",
+        action: "Cancel and revert to the previous theme",
+    },
+];
+
+impl ModeHandler for ThemePickerHandler {
+    fn dispatch(&self, key: KeyEvent, app: &mut App) {
+        handle_key(key, app);
+    }
+
+    fn bindings(&self) -> &'static [KeyBinding] {
+        BINDINGS
+    }
+}
 
 /// Transient state held while the theme picker modal is open.
 /// `original_theme` is captured at entry so Esc can revert when the user

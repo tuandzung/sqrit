@@ -2,7 +2,42 @@ use crossterm::event::{KeyCode, KeyEvent};
 
 use crate::app::App;
 use crate::clipboard;
-use crate::mode::Mode;
+use crate::mode::{KeyBinding, Mode, ModeHandler};
+
+pub struct ResultsHandler;
+
+const BINDINGS: &[KeyBinding] = &[
+    KeyBinding {
+        key: "h / j / k / l",
+        action: "Move selection left / down / up / right",
+    },
+    KeyBinding {
+        key: "PgDn / PgUp",
+        action: "Next / previous page",
+    },
+    KeyBinding {
+        key: "yc / yy / ya",
+        action: "Copy cell / row / all to clipboard",
+    },
+    KeyBinding {
+        key: "q / e / r",
+        action: "Focus Query / Explorer / Results pane",
+    },
+    KeyBinding {
+        key: "<space>",
+        action: "Open command palette",
+    },
+];
+
+impl ModeHandler for ResultsHandler {
+    fn dispatch(&self, key: KeyEvent, app: &mut App) {
+        handle_key(key, app);
+    }
+
+    fn bindings(&self) -> &'static [KeyBinding] {
+        BINDINGS
+    }
+}
 
 pub fn handle_key(key: KeyEvent, app: &mut App) {
     let total_rows = app.results.as_ref().map(|r| r.rows.len()).unwrap_or(0);

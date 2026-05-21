@@ -1,7 +1,7 @@
 use crossterm::event::{KeyCode, KeyEvent};
 
 use crate::app::App;
-use crate::mode::Mode;
+use crate::mode::{KeyBinding, Mode, ModeHandler};
 
 #[derive(Default)]
 pub struct NormalState {
@@ -12,6 +12,73 @@ pub struct NormalState {
 impl NormalState {
     pub fn new() -> Self {
         Self::default()
+    }
+}
+
+pub struct NormalHandler;
+
+const BINDINGS: &[KeyBinding] = &[
+    KeyBinding {
+        key: "Enter",
+        action: "Execute query",
+    },
+    KeyBinding {
+        key: "i",
+        action: "Enter Insert mode",
+    },
+    KeyBinding {
+        key: "h / j / k / l",
+        action: "Move cursor left / down / up / right",
+    },
+    KeyBinding {
+        key: "w / b",
+        action: "Word forward / backward",
+    },
+    KeyBinding {
+        key: "0 / $",
+        action: "Line start / end",
+    },
+    KeyBinding {
+        key: "gg / G",
+        action: "Top / bottom of buffer",
+    },
+    KeyBinding {
+        key: "x",
+        action: "Delete char at cursor",
+    },
+    KeyBinding {
+        key: "dd",
+        action: "Delete line",
+    },
+    KeyBinding {
+        key: "yy",
+        action: "Yank line",
+    },
+    KeyBinding {
+        key: "p",
+        action: "Paste below",
+    },
+    KeyBinding {
+        key: "u",
+        action: "Undo",
+    },
+    KeyBinding {
+        key: "e / r",
+        action: "Focus Explorer / Results pane",
+    },
+    KeyBinding {
+        key: "<space>",
+        action: "Open command palette",
+    },
+];
+
+impl ModeHandler for NormalHandler {
+    fn dispatch(&self, key: KeyEvent, app: &mut App) {
+        handle_key(key, app);
+    }
+
+    fn bindings(&self) -> &'static [KeyBinding] {
+        BINDINGS
     }
 }
 

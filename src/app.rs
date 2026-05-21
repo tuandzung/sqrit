@@ -85,6 +85,7 @@ pub struct App {
     pub theme: crate::theme::Theme,
     pub themes_dir: std::path::PathBuf,
     pub theme_picker: Option<crate::mode::theme_picker::ThemePickerState>,
+    pub help: Option<crate::mode::help::HelpState>,
     pub app_config_path: std::path::PathBuf,
 }
 
@@ -136,6 +137,7 @@ impl App {
             theme,
             themes_dir,
             theme_picker: None,
+            help: None,
             app_config_path,
         })
     }
@@ -197,6 +199,22 @@ impl App {
     /// Process a single key event via the current mode handler.
     pub fn handle_key_event(&mut self, key: crossterm::event::KeyEvent) {
         use crossterm::event::{KeyCode, KeyModifiers};
+
+        // Global help overlay. `?` from QueryNormal / Explorer / Results opens
+        // the help modal; inactive in QueryInsert (literal `?`), Picker (typed
+        // into the filter), and any modal mode (Help / ThemePicker — those
+        // own their own dismiss key).
+        if key.modifiers == KeyModifiers::NONE
+            && matches!(key.code, KeyCode::Char('?'))
+            && matches!(
+                self.mode,
+                Mode::QueryNormal | Mode::Explorer | Mode::Results
+            )
+        {
+            let origin = self.mode;
+            crate::mode::help::open(self, origin);
+            return;
+        }
 
         // Global space-prefix command palette (see CONTEXT.md "Command Palette").
         // Active in non-Insert, non-Picker modes. QueryInsert keeps `<space>` as
@@ -395,6 +413,84 @@ impl App {
         if self.mode == Mode::ThemePicker && self.theme_picker.is_some() {
             self.render_theme_picker(frame, area);
         }
+        if self.mode == Mode::Help && self.help.is_some() {
+            self.render_help(frame, area);
+        }
+    }
+
+    /// Modal rect for the help overlay. Width fits the widest "key" + a gutter
+    /// plus the widest "action"; height fits all bindings plus borders. Pure —
+    /// exposed for testability.
+    pub fn help_modal_rect(
+        area: Rect,
+        row_count: usize,
+        max_key: usize,
+        max_action: usize,
+    ) -> Rect {
+        let gutter = 2usize; // spaces between key column and action column
+        let content_w = max_key.saturating_add(gutter).saturating_add(max_action);
+        let title_w = " Help ".chars().count();
+        let desired_w = content_w.max(title_w).saturating_add(4) as u16; // borders + 1ch padding each side
+        let desired_h = (row_count as u16).saturating_add(2); // borders
+        let w = desired_w.min(area.width);
+        let h = desired_h.min(area.height);
+        let x = area.x + area.width.saturating_sub(w) / 2;
+        let y = area.y + area.height.saturating_sub(h) / 2;
+        Rect {
+            x,
+            y,
+            width: w,
+            height: h,
+        }
+    }
+
+    fn render_help(&self, frame: &mut ratatui::Frame, area: Rect) {
+        let Some(state) = self.help.as_ref() else {
+            return;
+        };
+        let bindings = state.origin.handler().bindings();
+        let max_key = bindings
+            .iter()
+            .map(|b| b.key.chars().count())
+            .max()
+            .unwrap_or(0);
+        let max_action = bindings
+            .iter()
+            .map(|b| b.action.chars().count())
+            .max()
+            .unwrap_or(0);
+        let modal = Self::help_modal_rect(area, bindings.len(), max_key, max_action);
+        if modal.width == 0 || modal.height == 0 {
+            return;
+        }
+        frame.render_widget(Clear, modal);
+
+        let title = format!(" Help — {} ", state.origin.label());
+        let block = Block::default()
+            .title(title)
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(self.theme.border_focused))
+            .style(Style::default().bg(self.theme.bg).fg(self.theme.fg));
+        let inner = block.inner(modal);
+        frame.render_widget(block, modal);
+
+        let lines: Vec<Line<'_>> = bindings
+            .iter()
+            .take(inner.height as usize)
+            .map(|b| {
+                let pad = max_key.saturating_sub(b.key.chars().count());
+                let padding = " ".repeat(pad);
+                Line::from(vec![
+                    Span::styled(
+                        format!("{}{}", b.key, padding),
+                        Style::default().fg(self.theme.keyword),
+                    ),
+                    Span::raw("  "),
+                    Span::styled(b.action, Style::default().fg(self.theme.fg)),
+                ])
+            })
+            .collect();
+        frame.render_widget(Paragraph::new(lines), inner);
     }
 
     /// Modal rect sized to fit the longest theme name plus borders/padding,

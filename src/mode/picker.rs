@@ -5,7 +5,46 @@ use crate::config::DbType;
 use crate::db::mysql::MySqlAdapter;
 use crate::db::postgres::PgAdapter;
 use crate::db::sqlite::SqliteAdapter;
-use crate::mode::Mode;
+use crate::mode::{KeyBinding, Mode, ModeHandler};
+
+pub struct PickerHandler;
+
+const BINDINGS: &[KeyBinding] = &[
+    KeyBinding {
+        key: "Up / Down",
+        action: "Move selection",
+    },
+    KeyBinding {
+        key: "Enter",
+        action: "Connect to selected database",
+    },
+    KeyBinding {
+        key: "a-z, 0-9, …",
+        action: "Type into the filter",
+    },
+    KeyBinding {
+        key: "Backspace",
+        action: "Delete last filter character",
+    },
+    KeyBinding {
+        key: "Esc",
+        action: "Clear filter",
+    },
+    KeyBinding {
+        key: "q",
+        action: "Quit",
+    },
+];
+
+impl ModeHandler for PickerHandler {
+    fn dispatch(&self, key: KeyEvent, app: &mut App) {
+        handle_key(key, app);
+    }
+
+    fn bindings(&self) -> &'static [KeyBinding] {
+        BINDINGS
+    }
+}
 
 fn build_url(
     scheme: &str,

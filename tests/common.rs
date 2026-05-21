@@ -49,6 +49,7 @@ pub fn test_app() -> App {
         theme: sqrit::theme::Theme::default_theme(),
         themes_dir: std::path::PathBuf::new(),
         theme_picker: None,
+        help: None,
         app_config_path: std::path::PathBuf::new(),
     }
 }
