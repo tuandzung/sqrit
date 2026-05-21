@@ -932,12 +932,27 @@ impl App {
 
     fn render_results(&self, frame: &mut ratatui::Frame, area: Rect) {
         let border = self.border_style(FocusedPane::Results);
+        let title = match self.results_state.filter.as_deref() {
+            Some(term) if !term.is_empty() => format!(" Results (filter: {}) ", term),
+            _ => " Results ".to_string(),
+        };
         let block = Block::default()
-            .title(" Results ")
+            .title(title)
             .borders(Borders::ALL)
             .border_style(border);
         let inner = block.inner(area);
         frame.render_widget(block, area);
+
+        let show_prompt = self.mode == Mode::ResultsFilter;
+        let (table_area, prompt_area) = if show_prompt && inner.height >= 1 {
+            let chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([Constraint::Min(1), Constraint::Length(1)])
+                .split(inner);
+            (chunks[0], Some(chunks[1]))
+        } else {
+            (inner, None)
+        };
 
         if let Some(ref result) = self.results {
             if !result.columns.is_empty() {
@@ -952,13 +967,13 @@ impl App {
                 let header = TableRow::new(header_cells)
                     .style(Style::default().add_modifier(Modifier::BOLD));
 
-                let rows: Vec<TableRow> = result
-                    .rows
+                let visible = self.results_state.visible_row_indices(result);
+                let rows: Vec<TableRow> = visible
                     .iter()
                     .skip(self.results_state.scroll_row)
                     .take(self.results_state.visible_rows)
-                    .enumerate()
-                    .map(|(i, row)| {
+                    .map(|&row_idx| {
+                        let row = &result.rows[row_idx];
                         let cells: Vec<Cell> = result
                             .columns
                             .iter()
@@ -970,8 +985,7 @@ impl App {
                                 Cell::from(val)
                             })
                             .collect();
-                        let is_selected_row =
-                            i + self.results_state.scroll_row == self.results_state.selected_row;
+                        let is_selected_row = row_idx == self.results_state.selected_row;
                         let style = if is_selected_row {
                             Style::default().bg(self.theme.selection_bg)
                         } else {
@@ -988,8 +1002,17 @@ impl App {
                     .collect();
 
                 let table = Table::new(rows, &widths).header(header);
-                frame.render_widget(table, inner);
+                frame.render_widget(table, table_area);
             }
+        }
+
+        if let Some(prompt_area) = prompt_area {
+            let filter = self.results_state.filter.as_deref().unwrap_or("");
+            let prompt = format!("/ {}", filter);
+            frame.render_widget(
+                Paragraph::new(prompt).style(Style::default().fg(self.theme.fg)),
+                prompt_area,
+            );
         }
     }
 

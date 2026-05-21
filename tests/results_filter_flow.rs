@@ -1,0 +1,235 @@
+mod common;
+
+use std::collections::HashMap;
+
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+use sqrit::app::{App, FocusedPane};
+use sqrit::db::types::{QueryResult, ResultColumn, Value};
+use sqrit::mode::Mode;
+
+fn key(code: KeyCode) -> KeyEvent {
+    KeyEvent::new(code, KeyModifiers::NONE)
+}
+
+fn press(app: &mut App, codes: &[KeyCode]) {
+    for c in codes {
+        app.handle_key_event(key(*c));
+    }
+}
+
+fn seed_three_rows(app: &mut App) {
+    let columns = vec![ResultColumn::untyped("name"), ResultColumn::untyped("city")];
+    let rows = vec![
+        {
+            let mut r = HashMap::new();
+            r.insert("name".into(), Value::Text("alice".into()));
+            r.insert("city".into(), Value::Text("Paris".into()));
+            r
+        },
+        {
+            let mut r = HashMap::new();
+            r.insert("name".into(), Value::Text("bob".into()));
+            r.insert("city".into(), Value::Text("Berlin".into()));
+            r
+        },
+        {
+            let mut r = HashMap::new();
+            r.insert("name".into(), Value::Text("carol".into()));
+            r.insert("city".into(), Value::Text("Madrid".into()));
+            r
+        },
+    ];
+    app.results = Some(QueryResult {
+        columns,
+        rows,
+        rows_affected: None,
+        total_count: None,
+    });
+    app.mode = Mode::Results;
+    app.focused_pane = FocusedPane::Results;
+}
+
+#[test]
+fn slash_in_results_opens_filter_prompt() {
+    let mut app = common::test_app();
+    seed_three_rows(&mut app);
+
+    press(&mut app, &[KeyCode::Char('/')]);
+
+    assert_eq!(app.mode, Mode::ResultsFilter);
+    assert_eq!(app.results_state.filter.as_deref(), Some(""));
+}
+
+#[test]
+fn typing_in_filter_mode_live_filters_visible_rows() {
+    let mut app = common::test_app();
+    seed_three_rows(&mut app);
+
+    press(
+        &mut app,
+        &[KeyCode::Char('/'), KeyCode::Char('b'), KeyCode::Char('o')],
+    );
+
+    let result = app.results.as_ref().unwrap();
+    let visible = app.results_state.visible_row_indices(result);
+    assert_eq!(visible, vec![1], "only 'bob' matches 'bo'");
+}
+
+#[test]
+fn enter_locks_filter_and_returns_to_results_mode() {
+    let mut app = common::test_app();
+    seed_three_rows(&mut app);
+
+    press(
+        &mut app,
+        &[
+            KeyCode::Char('/'),
+            KeyCode::Char('a'),
+            KeyCode::Char('r'),
+            KeyCode::Enter,
+        ],
+    );
+
+    assert_eq!(app.mode, Mode::Results);
+    assert_eq!(app.results_state.filter.as_deref(), Some("ar"));
+}
+
+#[test]
+fn esc_in_filter_mode_cancels_and_clears_filter() {
+    let mut app = common::test_app();
+    seed_three_rows(&mut app);
+
+    press(
+        &mut app,
+        &[KeyCode::Char('/'), KeyCode::Char('a'), KeyCode::Esc],
+    );
+
+    assert_eq!(app.mode, Mode::Results);
+    assert_eq!(app.results_state.filter, None);
+}
+
+#[test]
+fn comma_c_clears_a_locked_filter() {
+    let mut app = common::test_app();
+    seed_three_rows(&mut app);
+
+    press(
+        &mut app,
+        &[
+            KeyCode::Char('/'),
+            KeyCode::Char('a'),
+            KeyCode::Enter,
+            KeyCode::Char(','),
+            KeyCode::Char('c'),
+        ],
+    );
+
+    assert_eq!(app.mode, Mode::Results);
+    assert_eq!(app.results_state.filter, None);
+}
+
+#[test]
+fn backspace_in_filter_mode_removes_last_char() {
+    let mut app = common::test_app();
+    seed_three_rows(&mut app);
+
+    press(
+        &mut app,
+        &[
+            KeyCode::Char('/'),
+            KeyCode::Char('a'),
+            KeyCode::Char('b'),
+            KeyCode::Backspace,
+        ],
+    );
+
+    assert_eq!(app.results_state.filter.as_deref(), Some("a"));
+}
+
+#[test]
+fn selection_snaps_to_first_filtered_row_when_current_is_excluded() {
+    let mut app = common::test_app();
+    seed_three_rows(&mut app);
+    app.results_state.selected_row = 2; // carol
+
+    press(
+        &mut app,
+        &[KeyCode::Char('/'), KeyCode::Char('b'), KeyCode::Char('o')],
+    );
+
+    let result = app.results.as_ref().unwrap();
+    let visible = app.results_state.visible_row_indices(result);
+    assert_eq!(visible, vec![1]);
+    assert_eq!(
+        app.results_state.selected_row, 1,
+        "selection snaps to first filtered row (bob)"
+    );
+}
+
+#[test]
+fn filter_persists_across_page_change() {
+    let mut app = common::test_app();
+    seed_three_rows(&mut app);
+
+    press(
+        &mut app,
+        &[
+            KeyCode::Char('/'),
+            KeyCode::Char('l'),
+            KeyCode::Char('i'),
+            KeyCode::Enter,
+        ],
+    );
+    assert_eq!(app.results_state.filter.as_deref(), Some("li"));
+
+    app.last_query = Some("SELECT 1".to_string());
+    press(&mut app, &[KeyCode::PageDown]);
+
+    assert_eq!(
+        app.results_state.filter.as_deref(),
+        Some("li"),
+        "filter must survive PgDn"
+    );
+}
+
+#[test]
+fn navigation_j_skips_filtered_out_rows() {
+    let mut app = common::test_app();
+    seed_three_rows(&mut app);
+
+    press(
+        &mut app,
+        &[
+            KeyCode::Char('/'),
+            KeyCode::Char('a'),
+            KeyCode::Enter,
+            KeyCode::Char('j'),
+        ],
+    );
+
+    // 'a' matches alice (0), Paris (Paris contains 'a'? no, P-a-r-i-s yes),
+    // carol (2), madrid (contains 'a')... All three may match. Use a stricter filter.
+    // Reset with new filter "li" matches alice + Berlin.
+    app.results_state.filter = None;
+    app.mode = Mode::Results;
+    press(
+        &mut app,
+        &[
+            KeyCode::Char('/'),
+            KeyCode::Char('l'),
+            KeyCode::Char('i'),
+            KeyCode::Enter,
+        ],
+    );
+    let result = app.results.as_ref().unwrap();
+    let visible = app.results_state.visible_row_indices(result);
+    assert_eq!(visible, vec![0, 1], "alice (li) + Berlin (li)");
+
+    app.results_state.selected_row = 0;
+    press(&mut app, &[KeyCode::Char('j')]);
+    assert_eq!(
+        app.results_state.selected_row, 1,
+        "j moves to next visible row"
+    );
+}
