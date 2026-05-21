@@ -200,31 +200,69 @@ impl App {
 
     /// Process a single key event via the current mode handler.
     pub fn handle_key_event(&mut self, key: crossterm::event::KeyEvent) {
-        use crossterm::event::KeyCode;
+        use crossterm::event::{KeyCode, KeyModifiers};
 
         // Global space-prefix command palette (see CONTEXT.md "Command Palette").
         // Active in non-Insert, non-Picker modes. QueryInsert keeps `<space>` as
         // a literal char; Picker types `<space>` into its filter.
+        //
+        // Palette dispatch only fires for unmodified keys. Modified combos
+        // (Ctrl/Alt/Shift) clear the pending flag and fall through to the
+        // active mode handler, so e.g. `<space>` then `Ctrl+C` is not the
+        // same as `<space>c`.
         if self.pending_space {
             self.pending_space = false;
-            match key.code {
-                KeyCode::Char('f') => {
-                    self.toggle_maximize();
-                    return;
-                }
-                KeyCode::Char('t') => {
-                    let origin = self.mode;
-                    crate::mode::theme_picker::enter(self, origin);
-                    return;
-                }
-                _ => {
-                    // Unknown space combo — pass through to mode handler
+            if key.modifiers == KeyModifiers::NONE {
+                match key.code {
+                    KeyCode::Char('f') => {
+                        self.toggle_maximize();
+                        return;
+                    }
+                    KeyCode::Char('t') => {
+                        let origin = self.mode;
+                        crate::mode::theme_picker::enter(self, origin);
+                        return;
+                    }
+                    KeyCode::Char('q') => {
+                        self.should_quit = true;
+                        return;
+                    }
+                    KeyCode::Char('c') => {
+                        self.mode = Mode::Picker;
+                        return;
+                    }
+                    KeyCode::Char('x') => {
+                        self.disconnect_and_return_to_picker();
+                        return;
+                    }
+                    KeyCode::Char('z') => {
+                        self.status_message = "Cancel not yet implemented".to_string();
+                        return;
+                    }
+                    KeyCode::Char('h') => {
+                        self.status_message = "Query history not yet implemented".to_string();
+                        return;
+                    }
+                    _ => {
+                        // Unknown space combo — pass through to mode handler
+                    }
                 }
             }
         }
 
         let mode = self.mode;
         mode.handle_key(key, self);
+    }
+
+    /// Drop the active DB handle, clear cached schema + connection label,
+    /// and route the user back to the connection picker. Centralizes the
+    /// `<space>x` disconnect path so future entry points (e.g. a `:disconnect`
+    /// command) can't diverge from it.
+    pub fn disconnect_and_return_to_picker(&mut self) {
+        self.db = None;
+        self.active_connection = None;
+        self.explorer_state.schema = None;
+        self.mode = Mode::Picker;
     }
 
     pub fn toggle_maximize(&mut self) {

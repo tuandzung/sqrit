@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - Themes: TUI reads colors from a `Theme` loaded from `~/.sqrit/themes/<name>.toml`. Five defaults are bundled and written on first run (Rose Pine, Tokyo Night, Nord, Gruvbox, Catppuccin Macchiato). Active theme persisted in `~/.sqrit/config.toml`. `<space>t` opens a picker modal with live preview (arrow keys), Enter persists, Esc reverts to the pre-modal theme. Malformed or missing theme files fall back to a hardcoded default with a status-bar warning. See [ADR 5](docs/adr/0005-theme-toml-schema.md) (T1).
+- Space command palette: from `QueryNormal` / `Explorer` / `Results`, a leading `<space>` arms the palette and the next key dispatches a top-level action — `<space>f` maximize, `<space>t` theme picker, `<space>q` quit, `<space>c` back to connection picker (db preserved), `<space>x` disconnect (clears db/schema/active connection, returns to picker), `<space>z` cancel running query (stub status until T7), `<space>h` query history picker (stub status until T5). Palette is inert in `QueryInsert` (space stays a literal char) and `Picker` (space is typed into the filter). See [CONTEXT.md "Command Palette"](CONTEXT.md) (T2, #32).
 
 ## [0.1.1] - 2026-05-20
 
