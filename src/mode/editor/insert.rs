@@ -3,7 +3,50 @@ use std::time::Instant;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::app::App;
-use crate::mode::Mode;
+use crate::mode::{KeyBinding, Mode, ModeHandler};
+
+pub struct InsertHandler;
+
+const BINDINGS: &[KeyBinding] = &[
+    KeyBinding {
+        key: "<any char>",
+        action: "Insert literal character",
+    },
+    KeyBinding {
+        key: "Backspace",
+        action: "Delete previous character",
+    },
+    KeyBinding {
+        key: "Enter",
+        action: "Insert newline",
+    },
+    KeyBinding {
+        key: "Ctrl+Enter",
+        action: "Execute the current query",
+    },
+    KeyBinding {
+        key: "Tab",
+        action: "Accept autocomplete suggestion",
+    },
+    KeyBinding {
+        key: "Arrows / Home / End",
+        action: "Move cursor",
+    },
+    KeyBinding {
+        key: "Esc",
+        action: "Dismiss autocomplete or return to Normal mode",
+    },
+];
+
+impl ModeHandler for InsertHandler {
+    fn dispatch(&self, key: KeyEvent, app: &mut App) {
+        handle_key(key, app);
+    }
+
+    fn bindings(&self) -> &'static [KeyBinding] {
+        BINDINGS
+    }
+}
 
 fn update_autocomplete(app: &mut App) {
     app.last_keystroke = Some(Instant::now());

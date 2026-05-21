@@ -2,7 +2,42 @@ use crossterm::event::{KeyCode, KeyEvent};
 
 use crate::app::App;
 use crate::explorer::TreeItem;
-use crate::mode::Mode;
+use crate::mode::{KeyBinding, Mode, ModeHandler};
+
+pub struct ExplorerHandler;
+
+const BINDINGS: &[KeyBinding] = &[
+    KeyBinding {
+        key: "j / k",
+        action: "Move selection down / up",
+    },
+    KeyBinding {
+        key: "Enter",
+        action: "Expand or collapse the table / view",
+    },
+    KeyBinding {
+        key: "s",
+        action: "SELECT * FROM <table> LIMIT 100",
+    },
+    KeyBinding {
+        key: "q / r / e",
+        action: "Focus Query / Results / Explorer pane",
+    },
+    KeyBinding {
+        key: "<space>",
+        action: "Open command palette",
+    },
+];
+
+impl ModeHandler for ExplorerHandler {
+    fn dispatch(&self, key: KeyEvent, app: &mut App) {
+        handle_key(key, app);
+    }
+
+    fn bindings(&self) -> &'static [KeyBinding] {
+        BINDINGS
+    }
+}
 
 pub fn handle_key(key: KeyEvent, app: &mut App) {
     match key.code {
