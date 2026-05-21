@@ -418,18 +418,25 @@ impl App {
         }
     }
 
-    /// Modal rect for the help overlay. Width fits the widest "key" + a gutter
-    /// plus the widest "action"; height fits all bindings plus borders. Pure —
-    /// exposed for testability.
+    /// Rendered title for the help overlay block. Single source of truth
+    /// shared between `render_help` (drawing) and `help_modal_rect`
+    /// (sizing) so the box can't shrink below the title width.
+    pub fn help_title(origin: Mode) -> String {
+        format!(" Help — {} ", origin.label())
+    }
+
+    /// Modal rect for the help overlay. Width fits the longer of the title
+    /// and the widest "key" + gutter + "action" row; height fits all
+    /// bindings plus borders. Pure — exposed for testability.
     pub fn help_modal_rect(
         area: Rect,
         row_count: usize,
+        title_w: usize,
         max_key: usize,
         max_action: usize,
     ) -> Rect {
         let gutter = 2usize; // spaces between key column and action column
         let content_w = max_key.saturating_add(gutter).saturating_add(max_action);
-        let title_w = " Help ".chars().count();
         let desired_w = content_w.max(title_w).saturating_add(4) as u16; // borders + 1ch padding each side
         let desired_h = (row_count as u16).saturating_add(2); // borders
         let w = desired_w.min(area.width);
@@ -459,13 +466,14 @@ impl App {
             .map(|b| b.action.chars().count())
             .max()
             .unwrap_or(0);
-        let modal = Self::help_modal_rect(area, bindings.len(), max_key, max_action);
+        let title = Self::help_title(state.origin);
+        let title_w = title.chars().count();
+        let modal = Self::help_modal_rect(area, bindings.len(), title_w, max_key, max_action);
         if modal.width == 0 || modal.height == 0 {
             return;
         }
         frame.render_widget(Clear, modal);
 
-        let title = format!(" Help — {} ", state.origin.label());
         let block = Block::default()
             .title(title)
             .borders(Borders::ALL)

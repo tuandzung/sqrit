@@ -79,7 +79,8 @@ fn help_modal_renders_explorer_bindings_when_opened_from_explorer() {
 #[test]
 fn help_modal_rect_is_centered_and_fits() {
     let area = Rect::new(0, 0, 80, 24);
-    let modal = App::help_modal_rect(area, 5, 12, 30);
+    let title_w = App::help_title(Mode::QueryNormal).chars().count();
+    let modal = App::help_modal_rect(area, 5, title_w, 12, 30);
 
     assert!(modal.width <= area.width);
     assert!(modal.height <= area.height);
@@ -94,6 +95,26 @@ fn help_modal_rect_is_centered_and_fits() {
     assert!(
         y_offset.abs_diff(bottom_gap) <= 1,
         "modal must be vertically centered"
+    );
+}
+
+#[test]
+fn help_modal_is_wide_enough_for_long_title_when_bindings_are_narrow() {
+    // Bindings shorter than the title force title-driven sizing. The modal
+    // width (minus borders + padding) must accommodate the full rendered title.
+    let area = Rect::new(0, 0, 80, 24);
+    let title = App::help_title(Mode::QueryNormal);
+    let title_w = title.chars().count();
+    let modal = App::help_modal_rect(area, 1, title_w, 1, 1);
+
+    // 4 = borders (2) + 1-char padding each side. Anything less and the title
+    // would clip at the rendered border.
+    assert!(
+        modal.width as usize >= title_w + 4,
+        "modal width {} must hold title {:?} ({} chars) plus borders/padding",
+        modal.width,
+        title,
+        title_w
     );
 }
 
