@@ -165,6 +165,10 @@ impl ClipboardWriter {
     }
 }
 
+/// Decide which backend to use. Probes `wl-copy --version` once to confirm
+/// the binary is on `$PATH`; if it is, the actual selection writes go
+/// through `wl_copy()`. Falls back to arboard for X11 / macOS / Windows
+/// and when `wl-copy` is not installed.
 fn probe_backend() -> Backend {
     if std::env::var_os("WAYLAND_DISPLAY").is_some() && wl_copy_available() {
         return Backend::WlCopy;
@@ -195,14 +199,17 @@ fn wl_copy(text: &str) -> anyhow::Result<()> {
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .spawn()?;
-    // `wl-copy` reads stdin, then daemonises and serves the selection
-    // until something else overwrites it.
     if let Some(mut stdin) = child.stdin.take() {
         stdin.write_all(text.as_bytes())?;
     }
-    let status = child.wait()?;
-    if !status.success() {
-        anyhow::bail!("wl-copy exited with status {}", status);
+    let out = child.wait_with_output()?;
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        anyhow::bail!(
+            "wl-copy exited with status {}: {}",
+            out.status,
+            stderr.trim()
+        );
     }
     Ok(())
 }
@@ -211,18 +218,4 @@ impl Default for ClipboardWriter {
     fn default() -> Self {
         Self::new()
     }
-}
-
-/// Backwards-compatible one-shot copy. New code should reuse a single
-/// [`ClipboardWriter`] held on `App` so the X11 serve thread lives across
-/// copies; this free function constructs and drops a fresh `Clipboard`
-/// every call and will trigger arboard's "dropped quickly" warning on
-/// Linux/X11.
-#[deprecated(
-    note = "use `ClipboardWriter::copy` via `App::clipboard_writer` so the X11 serve thread survives between copies"
-)]
-pub fn copy_to_clipboard(text: &str) -> anyhow::Result<()> {
-    let mut clipboard = arboard::Clipboard::new()?;
-    clipboard.set_text(text)?;
-    Ok(())
 }
