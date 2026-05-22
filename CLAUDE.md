@@ -75,6 +75,7 @@ Project-level rules; violating one usually means an architectural mistake.
 - V6: Paginated results, never full result set in memory.
 - V7: Autocomplete triggers after 300ms idle.
 - V8: INSERT mode renders a visible terminal cursor that honors viewport scroll.
+- V9: Bracketed paste is enabled at startup and disabled at shutdown (including via the panic hook). Multi-line clipboard input is delivered to modes via `ModeHandler::handle_paste`, never as a stream of `Char(c)` events.
 
 ## Decision records
 

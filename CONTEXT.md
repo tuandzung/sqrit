@@ -80,6 +80,9 @@ Client-side **substring** row filter on the **current results page**. `/` in Res
 ### Cancel (v0.2)
 DB-level cancel of a running query, exposed as `async fn cancel(&self)` on the `Database` trait. Each adapter uses its native mechanism: SQLite via `rusqlite`'s `InterruptHandle`; PostgreSQL via `SELECT pg_cancel_backend($pid)` executed on a side connection (PID captured at connect); MySQL via `KILL QUERY <conn_id>` similarly. Triggered by `<space>z`. Stale results from the cancelled query are discarded by the existing `query_id` guard in `App::drain_async_results`. See [ADR 6](docs/adr/0006-per-adapter-query-cancel.md).
 
+### Paste (v0.2)
+Bracketed paste is enabled at startup so terminals deliver clipboard payloads as a single `Event::Paste(String)` rather than a stream of `KeyCode::Char('j') + CONTROL` events (which is how a raw LF byte decodes — `Ctrl+J == LF` in ASCII, hence the historical "every newline became `j`" bug). Paste events route through a new `ModeHandler::handle_paste` trait method (default no-op): `QueryInsert` inserts the text verbatim and refreshes autocomplete; `Picker` / `HistoryPicker` append the first line of the pasted text to the filter and drop the rest. Pasted leading whitespace bypasses the `<space>` command-palette dispatcher. A defensive `Ctrl+J → newline` mapping in Insert mode keeps multi-line paste working on terminals that do not support bracketed paste (older `screen`, raw serial). See V9 in CLAUDE.md.
+
 ## Baseline Scope (v0.1)
 
 - TUI only, no CLI mode

@@ -1,7 +1,7 @@
 use std::io;
 use std::time::Instant;
 
-use crossterm::event::{self, Event, KeyEventKind};
+use crossterm::event::{self, DisableBracketedPaste, EnableBracketedPaste, Event, KeyEventKind};
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
 };
@@ -25,6 +25,23 @@ use crate::editor::EditorBuffer;
 use crate::mode::editor::normal::NormalState;
 use crate::mode::Mode;
 use crate::picker::PickerState;
+
+/// Install a panic hook that restores the terminal — disables bracketed
+/// paste, leaves the alternate screen, and turns raw mode back off — so a
+/// panic doesn't leave the user's shell unusable. Idempotent: only
+/// installs the hook once even if `run()` is called multiple times.
+fn install_panic_hook_for_terminal_restore() {
+    use std::sync::Once;
+    static INIT: Once = Once::new();
+    INIT.call_once(|| {
+        let prev = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            let _ = disable_raw_mode();
+            let _ = crossterm::execute!(io::stdout(), DisableBracketedPaste, LeaveAlternateScreen);
+            prev(info);
+        }));
+    });
+}
 
 pub enum AsyncResult {
     QueryDone {
@@ -432,8 +449,9 @@ impl App {
     }
 
     pub async fn run(&mut self) -> anyhow::Result<()> {
-        crossterm::execute!(io::stdout(), EnterAlternateScreen)?;
+        crossterm::execute!(io::stdout(), EnterAlternateScreen, EnableBracketedPaste)?;
         enable_raw_mode()?;
+        install_panic_hook_for_terminal_restore();
         let backend = CrosstermBackend::new(io::stdout());
         let mut terminal = Terminal::new(backend)?;
         terminal.clear()?;
@@ -442,13 +460,20 @@ impl App {
             terminal.draw(|f| self.render(f))?;
 
             if event::poll(std::time::Duration::from_millis(100))? {
-                if let Event::Key(key) = event::read()? {
-                    if key.kind == KeyEventKind::Press {
+                match event::read()? {
+                    Event::Key(key) if key.kind == KeyEventKind::Press => {
                         // Go through `handle_key_event` so the space-prefix
                         // dispatcher (<space>t, <space>f) runs before mode
                         // handlers. Bypassing it loses the prefix.
                         self.handle_key_event(key);
                     }
+                    Event::Paste(text) => {
+                        // V9: paste events bypass the space-prefix
+                        // dispatcher — a pasted leading space must not
+                        // arm the command palette.
+                        self.mode.handler().handle_paste(&text, self);
+                    }
+                    _ => {}
                 }
             }
 
@@ -484,7 +509,7 @@ impl App {
         }
 
         disable_raw_mode()?;
-        crossterm::execute!(io::stdout(), LeaveAlternateScreen)?;
+        crossterm::execute!(io::stdout(), DisableBracketedPaste, LeaveAlternateScreen)?;
         Ok(())
     }
 

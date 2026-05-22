@@ -28,6 +28,11 @@ pub struct KeyBinding {
 pub trait ModeHandler {
     fn dispatch(&self, key: KeyEvent, app: &mut App);
     fn bindings(&self) -> &'static [KeyBinding];
+
+    /// Handle a bracketed-paste payload arriving via `Event::Paste`.
+    /// Default no-op so a new mode opts in by overriding, and forgetful
+    /// authors fail safe (ignore) rather than crash. See V9 in CLAUDE.md.
+    fn handle_paste(&self, _text: &str, _app: &mut App) {}
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
