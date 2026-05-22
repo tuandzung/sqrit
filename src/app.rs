@@ -1020,14 +1020,15 @@ impl App {
                                     .get(&col.name)
                                     .map(|v| v.to_string())
                                     .unwrap_or_default();
-                                let mut cell = Cell::from(val);
+                                // Build the cell style additively so any future
+                                // per-cell fg/bg (e.g. NULL dim, error red) is
+                                // preserved; REVERSED only flips fg/bg at the
+                                // terminal layer, leaving row tint visible.
+                                let mut style = Style::default();
                                 if row_idx == selected_row && col_idx == selected_col {
-                                    // Reverse-video on the active cell layers over
-                                    // the row tint applied at TableRow level.
-                                    cell = cell
-                                        .style(Style::default().add_modifier(Modifier::REVERSED));
+                                    style = style.add_modifier(Modifier::REVERSED);
                                 }
-                                cell
+                                Cell::from(val).style(style)
                             })
                             .collect();
                         let style = if row_idx == selected_row {

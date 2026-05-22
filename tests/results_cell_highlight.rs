@@ -47,6 +47,33 @@ fn locate(terminal: &Terminal<TestBackend>, needle: &str) -> Option<(u16, u16)> 
     None
 }
 
+/// Find the first buffer position where `needle` appears as a contiguous
+/// sequence of single-character symbols on the same row. Returns the (x, y)
+/// of the first character. Used so a 3-cell value like "v11" can be located
+/// unambiguously even when other cells start with "v".
+fn find_seq(terminal: &Terminal<TestBackend>, needle: &str) -> (u16, u16) {
+    let chars: Vec<&str> = needle
+        .as_bytes()
+        .chunks(1)
+        .map(|c| std::str::from_utf8(c).unwrap())
+        .collect();
+    assert!(!chars.is_empty(), "needle must be non-empty");
+    let buffer = terminal.backend().buffer();
+    let span = chars.len() as u16 - 1;
+    for y in 0..buffer.area.height {
+        for x in 0..buffer.area.width.saturating_sub(span) {
+            if chars
+                .iter()
+                .enumerate()
+                .all(|(i, ch)| buffer[(x + i as u16, y)].symbol() == *ch)
+            {
+                return (x, y);
+            }
+        }
+    }
+    panic!("could not find sequence {:?} in buffer", needle);
+}
+
 fn render(app: &mut App) -> Terminal<TestBackend> {
     let backend = TestBackend::new(60, 12);
     let mut terminal = Terminal::new(backend).unwrap();
@@ -63,23 +90,7 @@ fn active_body_cell_carries_reverse_modifier() {
     app.results_state.selected_col = 1;
     let terminal = render(&mut app);
 
-    // locate() finds the first "v" — which may be in row 0 — so search the
-    // 3-char "v11" sequence directly to land on the active cell.
-    let (x, y) = (|| {
-        let b = terminal.backend().buffer();
-        for y in 0..b.area.height {
-            for x in 0..b.area.width.saturating_sub(2) {
-                if b[(x, y)].symbol() == "v"
-                    && b[(x + 1, y)].symbol() == "1"
-                    && b[(x + 2, y)].symbol() == "1"
-                {
-                    return (x, y);
-                }
-            }
-        }
-        panic!("could not find active-cell value 'v11' in buffer");
-    })();
-
+    let (x, y) = find_seq(&terminal, "v11");
     let cell = &terminal.backend().buffer()[(x, y)];
     assert!(
         cell.modifier.contains(Modifier::REVERSED),
@@ -114,22 +125,8 @@ fn inactive_body_cell_lacks_reverse_modifier() {
     app.results_state.selected_col = 1;
     let terminal = render(&mut app);
 
-    let (x, y) = (|| {
-        let b = terminal.backend().buffer();
-        // v00 — row 0, col 0; unrelated to selection (1,1).
-        for y in 0..b.area.height {
-            for x in 0..b.area.width.saturating_sub(2) {
-                if b[(x, y)].symbol() == "v"
-                    && b[(x + 1, y)].symbol() == "0"
-                    && b[(x + 2, y)].symbol() == "0"
-                {
-                    return (x, y);
-                }
-            }
-        }
-        panic!("could not find non-active cell value 'v00' in buffer");
-    })();
-
+    // v00 — row 0, col 0; unrelated to selection (1,1).
+    let (x, y) = find_seq(&terminal, "v00");
     let cell = &terminal.backend().buffer()[(x, y)];
     assert!(
         !cell.modifier.contains(Modifier::REVERSED),
@@ -166,21 +163,7 @@ fn selected_row_non_selected_col_has_row_tint_no_reverse() {
     let terminal = render(&mut app);
 
     // v12 — row 1 (selected), col 2 (not selected).
-    let (x, y) = (|| {
-        let b = terminal.backend().buffer();
-        for y in 0..b.area.height {
-            for x in 0..b.area.width.saturating_sub(2) {
-                if b[(x, y)].symbol() == "v"
-                    && b[(x + 1, y)].symbol() == "1"
-                    && b[(x + 2, y)].symbol() == "2"
-                {
-                    return (x, y);
-                }
-            }
-        }
-        panic!("could not find selected-row-other-col cell 'v12' in buffer");
-    })();
-
+    let (x, y) = find_seq(&terminal, "v12");
     let cell = &terminal.backend().buffer()[(x, y)];
     assert!(
         !cell.modifier.contains(Modifier::REVERSED),
@@ -206,21 +189,7 @@ fn cell_highlight_persists_when_focus_leaves_results() {
     app.mode = Mode::QueryNormal;
     let terminal = render(&mut app);
 
-    let (x, y) = (|| {
-        let b = terminal.backend().buffer();
-        for y in 0..b.area.height {
-            for x in 0..b.area.width.saturating_sub(2) {
-                if b[(x, y)].symbol() == "v"
-                    && b[(x + 1, y)].symbol() == "1"
-                    && b[(x + 2, y)].symbol() == "1"
-                {
-                    return (x, y);
-                }
-            }
-        }
-        panic!("could not find active-cell value 'v11' after focus change");
-    })();
-
+    let (x, y) = find_seq(&terminal, "v11");
     let cell = &terminal.backend().buffer()[(x, y)];
     assert!(
         cell.modifier.contains(Modifier::REVERSED),
