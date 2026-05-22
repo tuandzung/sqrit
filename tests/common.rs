@@ -52,6 +52,7 @@ pub fn test_app() -> App {
         help: None,
         cell_viewer: None,
         history_picker: None,
+        clipboard_writer: sqrit::clipboard::ClipboardWriter::new(),
         app_config_path: std::path::PathBuf::new(),
         sqrit_dir: std::path::PathBuf::new(),
         query_started_at: None,
