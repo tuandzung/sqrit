@@ -19,6 +19,7 @@ SQL text edited in the query pane. Executed on `Enter` in Normal mode or `Ctrl+E
 Output from query execution. Rendered as a paginated, scrollable table.
 Pagination: fetch N rows at a time. Navigation: `h/j/k/l`.
 Copy: cell (`yc`), row (`yy`), all (`ya`). Export: CSV, JSON.
+Selection is two-axis: the active row is tinted with `selection_bg`, and the active cell is layered on top with reverse video (`Modifier::REVERSED`); the header cell of the active column is also reverse-highlighted. Selection is persistent — focus changes (`<space>e/q/r`) recolor the border but never clear the cell highlight.
 
 ### Explorer
 Left sidebar schema browser. Tree hierarchy: connection → tables → columns, views → columns.

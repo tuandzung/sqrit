@@ -988,12 +988,18 @@ impl App {
 
         if let Some(ref result) = self.results {
             if !result.columns.is_empty() {
+                let selected_col = self.results_state.selected_col;
+                let selected_row = self.results_state.selected_row;
                 let header_cells: Vec<Cell> = result
                     .columns
                     .iter()
-                    .map(|c| {
-                        Cell::from(c.name.as_str())
-                            .style(Style::default().fg(self.theme.border_focused))
+                    .enumerate()
+                    .map(|(col_idx, c)| {
+                        let mut style = Style::default().fg(self.theme.border_focused);
+                        if col_idx == selected_col {
+                            style = style.add_modifier(Modifier::REVERSED);
+                        }
+                        Cell::from(c.name.as_str()).style(style)
                     })
                     .collect();
                 let header = TableRow::new(header_cells)
@@ -1005,20 +1011,26 @@ impl App {
                     .skip(self.results_state.scroll_row)
                     .take(self.results_state.visible_rows)
                     .map(|&row_idx| {
-                        let row = &result.rows[row_idx];
                         let cells: Vec<Cell> = result
                             .columns
                             .iter()
-                            .map(|col| {
-                                let val = row
+                            .enumerate()
+                            .map(|(col_idx, col)| {
+                                let val = result.rows[row_idx]
                                     .get(&col.name)
                                     .map(|v| v.to_string())
                                     .unwrap_or_default();
-                                Cell::from(val)
+                                let mut cell = Cell::from(val);
+                                if row_idx == selected_row && col_idx == selected_col {
+                                    // Reverse-video on the active cell layers over
+                                    // the row tint applied at TableRow level.
+                                    cell = cell
+                                        .style(Style::default().add_modifier(Modifier::REVERSED));
+                                }
+                                cell
                             })
                             .collect();
-                        let is_selected_row = row_idx == self.results_state.selected_row;
-                        let style = if is_selected_row {
+                        let style = if row_idx == selected_row {
                             Style::default().bg(self.theme.selection_bg)
                         } else {
                             Style::default()
