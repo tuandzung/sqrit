@@ -1,3 +1,5 @@
+use std::sync::{Arc, Mutex};
+
 use async_trait::async_trait;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::{Row, TypeInfo, ValueRef};
@@ -65,6 +67,10 @@ fn is_query_returning_rows(sql: &str) -> bool {
 pub struct PgAdapter {
     url: String,
     pool: Option<sqlx::postgres::PgPool>,
+    // Backend PID of the most recent user query. Cancel reads it to target
+    // pg_cancel_backend; in_transaction reads it to probe pg_stat_activity.
+    // Captured at execute() start, after acquiring a pool connection.
+    last_pid: Arc<Mutex<Option<u32>>>,
 }
 
 impl PgAdapter {
@@ -72,6 +78,7 @@ impl PgAdapter {
         Self {
             url: url.to_string(),
             pool: None,
+            last_pid: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -98,8 +105,17 @@ impl Database for PgAdapter {
             .ok_or_else(|| anyhow::anyhow!("not connected"))?;
         let is_select = is_query_returning_rows(query);
 
+        // Pin one pool connection for the whole query so we can capture its
+        // backend PID up-front. cancel() targets that PID via a side
+        // connection; in_transaction() probes pg_stat_activity for it later.
+        let mut conn = pool.acquire().await?;
+        let pid: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
+            .fetch_one(&mut *conn)
+            .await?;
+        *self.last_pid.lock().unwrap() = Some(pid as u32);
+
         if is_select {
-            let rows = sqlx::query(query).fetch_all(pool).await?;
+            let rows = sqlx::query(query).fetch_all(&mut *conn).await?;
             let columns = if rows.is_empty() {
                 vec![]
             } else {
@@ -126,7 +142,7 @@ impl Database for PgAdapter {
                 total_count: None,
             })
         } else {
-            let result = sqlx::query(query).execute(pool).await?;
+            let result = sqlx::query(query).execute(&mut *conn).await?;
             Ok(QueryResult {
                 columns: vec![],
                 rows: vec![],
@@ -134,6 +150,37 @@ impl Database for PgAdapter {
                 total_count: None,
             })
         }
+    }
+
+    async fn cancel(&self) -> anyhow::Result<()> {
+        let Some(pid) = *self.last_pid.lock().unwrap() else {
+            return Ok(());
+        };
+        let Some(pool) = self.pool.as_ref() else {
+            return Ok(());
+        };
+        // Side connection from the pool — must not reuse the connection
+        // already busy running the cancelled query.
+        sqlx::query("SELECT pg_cancel_backend($1)")
+            .bind(pid as i32)
+            .execute(pool)
+            .await?;
+        Ok(())
+    }
+
+    async fn in_transaction(&self) -> anyhow::Result<bool> {
+        let Some(pid) = *self.last_pid.lock().unwrap() else {
+            return Ok(false);
+        };
+        let Some(pool) = self.pool.as_ref() else {
+            return Ok(false);
+        };
+        let state: Option<String> =
+            sqlx::query_scalar("SELECT state FROM pg_stat_activity WHERE pid = $1")
+                .bind(pid as i32)
+                .fetch_optional(pool)
+                .await?;
+        Ok(matches!(state.as_deref(), Some(s) if s.starts_with("idle in transaction")))
     }
 
     async fn execute_paginated(
@@ -245,6 +292,7 @@ impl Database for PgAdapter {
         Box::new(Self {
             url: self.url.clone(),
             pool: self.pool.clone(),
+            last_pid: Arc::clone(&self.last_pid),
         })
     }
 }

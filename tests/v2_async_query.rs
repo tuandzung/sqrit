@@ -112,6 +112,43 @@ async fn connect_and_schema_load_via_async_task() {
     assert_eq!(app.query_status, QueryStatus::Success);
 }
 
+// T7: <space>z fires DB cancel, status bar shows "query cancelled".
+#[tokio::test]
+async fn cancel_sets_status_and_drops_stale_result() {
+    let mut app = make_connected_app();
+    if let Some(ref mut db) = app.db {
+        db.connect().await.unwrap();
+    }
+
+    app.editor.insert_str(
+        "WITH RECURSIVE c(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM c WHERE n < 100000000) \
+         SELECT MAX(n) FROM c",
+    );
+    app.pending_query = Some(app.editor.text());
+    app.execute_pending();
+    assert_eq!(app.query_status, QueryStatus::Running);
+
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    app.trigger_cancel();
+
+    let start = std::time::Instant::now();
+    loop {
+        app.drain_async_results();
+        if app.status_message.starts_with("query cancelled") {
+            break;
+        }
+        if start.elapsed() > std::time::Duration::from_secs(3) {
+            panic!(
+                "cancel did not surface status within 3s; got {:?}, query_status={:?}",
+                app.status_message, app.query_status
+            );
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+
+    assert_eq!(app.query_status, QueryStatus::Idle);
+}
+
 // V2: connect failure shows error in status bar
 #[tokio::test]
 async fn connect_failure_shows_error() {

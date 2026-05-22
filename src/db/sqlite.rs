@@ -8,6 +8,11 @@ use super::Database;
 pub struct SqliteAdapter {
     path: String,
     conn: Option<Arc<std::sync::Mutex<rusqlite::Connection>>>,
+    // Interrupt handle captured at connect-time. Shared with every clone of
+    // the adapter so cancel() reaches the same underlying connection that
+    // execute() is blocking on. `InterruptHandle` is documented as
+    // `Send + Sync` in rusqlite.
+    interrupt: Option<Arc<rusqlite::InterruptHandle>>,
 }
 
 impl SqliteAdapter {
@@ -15,6 +20,7 @@ impl SqliteAdapter {
         Self {
             path: path.to_string(),
             conn: None,
+            interrupt: None,
         }
     }
 }
@@ -24,13 +30,35 @@ impl Database for SqliteAdapter {
     async fn connect(&mut self) -> anyhow::Result<()> {
         let path = self.path.clone();
         let conn = tokio::task::spawn_blocking(move || rusqlite::Connection::open(&path)).await??;
+        let interrupt = conn.get_interrupt_handle();
         self.conn = Some(Arc::new(std::sync::Mutex::new(conn)));
+        self.interrupt = Some(Arc::new(interrupt));
         Ok(())
     }
 
     async fn disconnect(&mut self) -> anyhow::Result<()> {
         self.conn = None;
+        self.interrupt = None;
         Ok(())
+    }
+
+    async fn cancel(&self) -> anyhow::Result<()> {
+        if let Some(handle) = self.interrupt.as_ref() {
+            handle.interrupt();
+        }
+        Ok(())
+    }
+
+    async fn in_transaction(&self) -> anyhow::Result<bool> {
+        let Some(conn) = self.conn.as_ref() else {
+            return Ok(false);
+        };
+        let conn = Arc::clone(conn);
+        tokio::task::spawn_blocking(move || {
+            let conn = conn.lock().unwrap();
+            Ok(!conn.is_autocommit())
+        })
+        .await?
     }
 
     async fn execute(&self, query: &str) -> anyhow::Result<QueryResult> {
@@ -188,6 +216,7 @@ impl Database for SqliteAdapter {
         Box::new(Self {
             path: self.path.clone(),
             conn: self.conn.clone(),
+            interrupt: self.interrupt.clone(),
         })
     }
 }

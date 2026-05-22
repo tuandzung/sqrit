@@ -85,20 +85,11 @@ fn space_x_disconnects_and_returns_to_picker() {
     assert!(app.explorer_state.schema.is_none());
 }
 
-// --- Slice 5: <space>z stub for cancel ---
-
-#[test]
-fn space_z_sets_cancel_stub_status() {
-    let mut app = common::test_app();
-
-    press(&mut app, &[KeyCode::Char(' '), KeyCode::Char('z')]);
-
-    assert!(
-        app.status_message.to_lowercase().contains("cancel"),
-        "expected cancel stub status, got: {:?}",
-        app.status_message
-    );
-}
+// Slice 5 (`<space>z` cancel) is covered end-to-end by
+// `v2_async_query::cancel_sets_status_and_drops_stale_result`, which exercises
+// the full async flow (db.cancel + in_transaction + drain). The earlier stub
+// test asserted only that something was written to status_message; the real
+// flow needs a tokio runtime + drain, so we let the integration test own it.
 
 // --- Slice 6: <space>h stub for query history ---
 

@@ -38,6 +38,12 @@ pub enum AsyncResult {
         schema: Option<SchemaInfo>,
     },
     ConnectFailed(String),
+    /// `<space>z` cancel completed. `in_tx` is the connection's transaction
+    /// state observed after the cancel landed; status bar uses it to decide
+    /// whether to surface the "may need ROLLBACK" hint (see ADR 6).
+    Cancelled {
+        in_tx: bool,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -179,6 +185,14 @@ impl App {
                 AsyncResult::ConnectFailed(e) => {
                     self.query_status = QueryStatus::Error(e);
                 }
+                AsyncResult::Cancelled { in_tx } => {
+                    self.status_message = if in_tx {
+                        "query cancelled — transaction may need ROLLBACK".to_string()
+                    } else {
+                        "query cancelled".to_string()
+                    };
+                    self.query_status = QueryStatus::Idle;
+                }
             }
         }
     }
@@ -260,7 +274,7 @@ impl App {
                         return;
                     }
                     KeyCode::Char('z') => {
-                        self.status_message = "Cancel not yet implemented".to_string();
+                        self.trigger_cancel();
                         return;
                     }
                     KeyCode::Char('h') => {
@@ -395,6 +409,24 @@ impl App {
         } else {
             self.query_status = QueryStatus::Error("No database connection".to_string());
         }
+    }
+
+    /// Fire a DB-level cancel on the running query (see ADR 6). Bumps
+    /// `query_id` so any QueryDone that still arrives from the cancelled
+    /// future is discarded by the existing guard in `drain_async_results`.
+    /// The cancel completion message is delivered via `AsyncResult::Cancelled`.
+    pub fn trigger_cancel(&mut self) {
+        let Some(db) = self.db.as_ref() else {
+            return;
+        };
+        self.query_id += 1;
+        let db = db.clone_box();
+        let tx = self.async_tx.clone();
+        tokio::spawn(async move {
+            let _ = db.cancel().await;
+            let in_tx = db.in_transaction().await.unwrap_or(false);
+            let _ = tx.send(AsyncResult::Cancelled { in_tx });
+        });
     }
 
     pub async fn run(&mut self) -> anyhow::Result<()> {

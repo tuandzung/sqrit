@@ -23,5 +23,20 @@ pub trait Database: Send + Sync {
     async fn list_columns(&self, table: &str) -> anyhow::Result<Vec<ColumnInfo>>;
     async fn schema_info(&self) -> anyhow::Result<SchemaInfo>;
 
+    /// Cancel any query currently running on this connection. No-op when
+    /// nothing is in flight. Each adapter uses its native mechanism — see
+    /// ADR 6 (SQLite: InterruptHandle, PG: pg_cancel_backend, MySQL: KILL
+    /// QUERY).
+    async fn cancel(&self) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    /// Whether the connection is currently inside an open transaction.
+    /// Called after `cancel()` to decide the status-bar ROLLBACK hint.
+    /// Best-effort; defaults to `false` for adapters that do not track it.
+    async fn in_transaction(&self) -> anyhow::Result<bool> {
+        Ok(false)
+    }
+
     fn clone_box(&self) -> Box<dyn Database>;
 }
