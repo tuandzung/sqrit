@@ -1,3 +1,23 @@
+use crate::db::types::{QueryResult, ResultColumn, Row};
+
+pub fn row_matches(row: &Row, columns: &[ResultColumn], filter: &str) -> bool {
+    if filter.is_empty() {
+        return true;
+    }
+    row_matches_lowered(row, columns, &filter.to_lowercase())
+}
+
+fn row_matches_lowered(row: &Row, columns: &[ResultColumn], needle_lower: &str) -> bool {
+    if needle_lower.is_empty() {
+        return true;
+    }
+    columns.iter().any(|c| {
+        row.get(&c.name)
+            .map(|v| v.to_string().to_lowercase().contains(needle_lower))
+            .unwrap_or(false)
+    })
+}
+
 pub struct ResultsState {
     pub selected_row: usize,
     pub selected_col: usize,
@@ -7,6 +27,8 @@ pub struct ResultsState {
     pub page_offset: usize,
     pub has_next_page: bool,
     pub pending_yank: bool,
+    pub pending_comma: bool,
+    pub filter: Option<String>,
 }
 
 impl Default for ResultsState {
@@ -20,6 +42,8 @@ impl Default for ResultsState {
             page_offset: 0,
             has_next_page: false,
             pending_yank: false,
+            pending_comma: false,
+            filter: None,
         }
     }
 }
@@ -83,6 +107,75 @@ impl ResultsState {
     pub fn move_left(&mut self) {
         if self.selected_col > 0 {
             self.selected_col -= 1;
+        }
+    }
+
+    pub fn visible_row_indices(&self, result: &QueryResult) -> Vec<usize> {
+        let Some(term) = self.filter.as_deref() else {
+            return (0..result.rows.len()).collect();
+        };
+        let needle = term.to_lowercase();
+        result
+            .rows
+            .iter()
+            .enumerate()
+            .filter(|(_, r)| row_matches_lowered(r, &result.columns, &needle))
+            .map(|(i, _)| i)
+            .collect()
+    }
+
+    pub fn move_down_visible(&mut self, result: &QueryResult) {
+        let visible = self.visible_row_indices(result);
+        if let Some(pos) = visible.iter().position(|&i| i == self.selected_row) {
+            if pos + 1 < visible.len() {
+                self.selected_row = visible[pos + 1];
+            }
+        } else if let Some(&first) = visible.first() {
+            self.selected_row = first;
+        }
+        self.adjust_scroll_to(&visible);
+    }
+
+    pub fn move_up_visible(&mut self, result: &QueryResult) {
+        let visible = self.visible_row_indices(result);
+        if let Some(pos) = visible.iter().position(|&i| i == self.selected_row) {
+            if pos > 0 {
+                self.selected_row = visible[pos - 1];
+            }
+        } else if let Some(&first) = visible.first() {
+            self.selected_row = first;
+        }
+        self.adjust_scroll_to(&visible);
+    }
+
+    pub fn snap_selection_to_visible(&mut self, result: &QueryResult) {
+        let visible = self.visible_row_indices(result);
+        if visible.is_empty() {
+            self.selected_row = 0;
+            self.scroll_row = 0;
+            return;
+        }
+        if !visible.contains(&self.selected_row) {
+            self.selected_row = visible[0];
+            self.scroll_row = 0;
+        }
+        self.adjust_scroll_to(&visible);
+    }
+
+    fn adjust_scroll_to(&mut self, visible: &[usize]) {
+        let Some(pos) = visible.iter().position(|&i| i == self.selected_row) else {
+            self.scroll_row = 0;
+            return;
+        };
+        let max_scroll = visible.len().saturating_sub(self.visible_rows);
+        let bottom = self.scroll_row + self.visible_rows;
+        if pos >= bottom {
+            self.scroll_row = pos + 1 - self.visible_rows;
+        } else if pos < self.scroll_row {
+            self.scroll_row = pos;
+        }
+        if self.scroll_row > max_scroll {
+            self.scroll_row = max_scroll;
         }
     }
 

@@ -5,6 +5,7 @@ pub mod help;
 pub mod history_picker;
 pub mod picker;
 pub mod results;
+pub mod results_filter;
 pub mod theme_picker;
 
 use crossterm::event::KeyEvent;
@@ -40,6 +41,7 @@ pub enum Mode {
     Help,
     CellViewer,
     HistoryPicker,
+    ResultsFilter,
 }
 
 impl Mode {
@@ -55,6 +57,7 @@ impl Mode {
             Mode::Help => &help::HelpHandler,
             Mode::CellViewer => &cell_viewer::CellViewerHandler,
             Mode::HistoryPicker => &history_picker::HistoryPickerHandler,
+            Mode::ResultsFilter => &results_filter::ResultsFilterHandler,
         }
     }
 
@@ -73,6 +76,7 @@ impl Mode {
             Mode::Help => "HELP",
             Mode::CellViewer => "CELL",
             Mode::HistoryPicker => "HISTORY",
+            Mode::ResultsFilter => "FILTER",
         }
     }
 }
