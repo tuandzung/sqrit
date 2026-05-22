@@ -112,6 +112,76 @@ async fn connect_and_schema_load_via_async_task() {
     assert_eq!(app.query_status, QueryStatus::Success);
 }
 
+// T7: AsyncResult::Cancelled { in_tx: true } surfaces the ROLLBACK hint.
+// Injecting the variant directly avoids any DB setup; the status text the
+// user actually sees is the bit ADR 6 nails down.
+#[tokio::test]
+async fn cancelled_status_in_tx_shows_rollback_hint() {
+    let mut app = make_connected_app();
+
+    app.async_tx
+        .send(sqrit::app::AsyncResult::Cancelled { in_tx: true })
+        .unwrap();
+    app.drain_async_results();
+
+    assert_eq!(
+        app.status_message,
+        "query cancelled — transaction may need ROLLBACK"
+    );
+    assert_eq!(app.query_status, QueryStatus::Idle);
+}
+
+// T7: AsyncResult::Cancelled { in_tx: false } surfaces the plain message.
+#[tokio::test]
+async fn cancelled_status_without_tx_is_plain() {
+    let mut app = make_connected_app();
+
+    app.async_tx
+        .send(sqrit::app::AsyncResult::Cancelled { in_tx: false })
+        .unwrap();
+    app.drain_async_results();
+
+    assert_eq!(app.status_message, "query cancelled");
+    assert_eq!(app.query_status, QueryStatus::Idle);
+}
+
+// T7: <space>z fires DB cancel, status bar shows "query cancelled".
+#[tokio::test]
+async fn cancel_sets_status_and_drops_stale_result() {
+    let mut app = make_connected_app();
+    if let Some(ref mut db) = app.db {
+        db.connect().await.unwrap();
+    }
+
+    app.editor.insert_str(
+        "WITH RECURSIVE c(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM c WHERE n < 100000000) \
+         SELECT MAX(n) FROM c",
+    );
+    app.pending_query = Some(app.editor.text());
+    app.execute_pending();
+    assert_eq!(app.query_status, QueryStatus::Running);
+
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    app.trigger_cancel();
+
+    let start = std::time::Instant::now();
+    loop {
+        app.drain_async_results();
+        if app.status_message.starts_with("query cancelled") {
+            break;
+        }
+        if start.elapsed() > std::time::Duration::from_secs(3) {
+            panic!(
+                "cancel did not surface status within 3s; got {:?}, query_status={:?}",
+                app.status_message, app.query_status
+            );
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+
+    assert_eq!(app.query_status, QueryStatus::Idle);
+}
+
 // V2: connect failure shows error in status bar
 #[tokio::test]
 async fn connect_failure_shows_error() {

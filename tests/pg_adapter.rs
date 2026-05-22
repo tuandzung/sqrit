@@ -1,3 +1,6 @@
+use std::sync::Arc;
+use std::time::Duration;
+
 use sqrit::db::postgres::PgAdapter;
 use sqrit::db::types::Value;
 use sqrit::db::Database;
@@ -323,4 +326,47 @@ async fn select_surfaces_pg_column_types() {
             .map(str::to_lowercase),
         Some("text".to_string())
     );
+}
+
+// T7: cancel() interrupts a long-running query within ~1s via pg_cancel_backend.
+#[tokio::test]
+#[ignore]
+async fn cancel_interrupts_long_running_query() {
+    let adapter = Arc::new(setup().await);
+
+    let runner = Arc::clone(&adapter);
+    let handle = tokio::spawn(async move { runner.execute("SELECT pg_sleep(30)").await });
+
+    // Give the server time to register the query as active so pg_cancel_backend
+    // has something to cancel.
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    adapter.cancel().await.unwrap();
+
+    let result = tokio::time::timeout(Duration::from_secs(2), handle)
+        .await
+        .expect("cancel did not interrupt query within 2s")
+        .expect("spawned task panicked");
+    assert!(result.is_err(), "cancelled query should return an error");
+}
+
+// T7: cancel on a fresh, never-queried adapter is a no-op.
+#[tokio::test]
+#[ignore]
+async fn cancel_without_query_is_noop() {
+    let adapter = setup().await;
+    adapter.cancel().await.unwrap();
+}
+
+// T7: in_transaction() reports true after BEGIN, false again after ROLLBACK.
+#[tokio::test]
+#[ignore]
+async fn in_transaction_tracks_begin_rollback() {
+    let adapter = setup().await;
+    // Run one statement so the adapter has captured a backend PID.
+    adapter.execute("SELECT 1").await.unwrap();
+    assert!(!adapter.in_transaction().await.unwrap());
+    adapter.execute("BEGIN").await.unwrap();
+    assert!(adapter.in_transaction().await.unwrap());
+    adapter.execute("ROLLBACK").await.unwrap();
+    assert!(!adapter.in_transaction().await.unwrap());
 }

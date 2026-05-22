@@ -421,3 +421,75 @@ async fn select_surfaces_mysql_column_types() {
         result.columns[2].data_type
     );
 }
+
+// T7: cancel() interrupts a long-running query within ~1s via KILL QUERY.
+//
+// MySQL's SLEEP() returns early (with value 1) when KILL QUERY fires
+// instead of raising an error, so the user-visible cancel signal is "fast
+// return" rather than a typed error. The 2-second timeout asserts that
+// signal directly.
+#[tokio::test]
+#[ignore]
+async fn cancel_interrupts_long_running_query() {
+    if !mysql_available() {
+        eprintln!("skipping: MySQL not available");
+        return;
+    }
+    let adapter = std::sync::Arc::new(setup().await);
+
+    let runner = std::sync::Arc::clone(&adapter);
+    let handle = tokio::spawn(async move { runner.execute("SELECT SLEEP(30)").await });
+
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    let started = std::time::Instant::now();
+    adapter.cancel().await.unwrap();
+
+    let result = tokio::time::timeout(Duration::from_secs(2), handle)
+        .await
+        .expect("cancel did not return the future within 2s")
+        .expect("spawned task panicked");
+    let elapsed = started.elapsed();
+    assert!(
+        elapsed < Duration::from_secs(2),
+        "cancel must short-circuit SLEEP, took {:?}",
+        elapsed
+    );
+    // MySQL contract documented in ADR 6: KILL QUERY on SELECT SLEEP(N)
+    // does NOT error — SLEEP() returns early with value 1 and the query
+    // resolves Ok. Lock this in so a future cancel-shape regression cannot
+    // silently change the user-visible cancellation contract on MySQL.
+    assert!(
+        result.is_ok(),
+        "cancelled SELECT SLEEP must resolve Ok on MySQL, got: {:?}",
+        result
+    );
+}
+
+// T7: cancel on a fresh, never-queried adapter is a no-op.
+#[tokio::test]
+#[ignore]
+async fn cancel_without_query_is_noop() {
+    if !mysql_available() {
+        eprintln!("skipping: MySQL not available");
+        return;
+    }
+    let adapter = setup().await;
+    adapter.cancel().await.unwrap();
+}
+
+// T7: in_transaction() reports true after BEGIN, false again after ROLLBACK.
+// Detected via session-scoped `@@in_transaction` on the pinned exec connection.
+#[tokio::test]
+#[ignore]
+async fn in_transaction_tracks_begin_rollback() {
+    if !mysql_available() {
+        eprintln!("skipping: MySQL not available");
+        return;
+    }
+    let adapter = setup().await;
+    assert!(!adapter.in_transaction().await.unwrap());
+    adapter.execute("BEGIN").await.unwrap();
+    assert!(adapter.in_transaction().await.unwrap());
+    adapter.execute("ROLLBACK").await.unwrap();
+    assert!(!adapter.in_transaction().await.unwrap());
+}

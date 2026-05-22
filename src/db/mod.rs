@@ -7,6 +7,24 @@ pub mod types;
 use async_trait::async_trait;
 use types::{ColumnInfo, QueryResult, SchemaInfo};
 
+/// Skip leading whitespace, line (`--`), and block (`/* */`) comments and
+/// return the remaining SQL with leading whitespace also trimmed. Shared by
+/// adapter helpers that need to identify the first real keyword
+/// (e.g. SELECT vs DDL, BEGIN/COMMIT tracking).
+pub(crate) fn skip_leading_comments(sql: &str) -> &str {
+    let mut rest = sql;
+    loop {
+        let trimmed = rest.trim_start();
+        if let Some(stripped) = trimmed.strip_prefix("--") {
+            rest = stripped.find('\n').map_or("", |i| &stripped[i + 1..]);
+        } else if let Some(stripped) = trimmed.strip_prefix("/*") {
+            rest = stripped.find("*/").map_or("", |i| &stripped[i + 2..]);
+        } else {
+            return trimmed;
+        }
+    }
+}
+
 #[async_trait]
 pub trait Database: Send + Sync {
     async fn connect(&mut self) -> anyhow::Result<()>;
@@ -22,6 +40,21 @@ pub trait Database: Send + Sync {
     async fn list_views(&self) -> anyhow::Result<Vec<String>>;
     async fn list_columns(&self, table: &str) -> anyhow::Result<Vec<ColumnInfo>>;
     async fn schema_info(&self) -> anyhow::Result<SchemaInfo>;
+
+    /// Cancel any query currently running on this connection. No-op when
+    /// nothing is in flight. Each adapter uses its native mechanism — see
+    /// ADR 6 (SQLite: InterruptHandle, PG: pg_cancel_backend, MySQL: KILL
+    /// QUERY).
+    async fn cancel(&self) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    /// Whether the connection is currently inside an open transaction.
+    /// Called after `cancel()` to decide the status-bar ROLLBACK hint.
+    /// Best-effort; defaults to `false` for adapters that do not track it.
+    async fn in_transaction(&self) -> anyhow::Result<bool> {
+        Ok(false)
+    }
 
     fn clone_box(&self) -> Box<dyn Database>;
 }

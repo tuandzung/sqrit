@@ -1,3 +1,6 @@
+use std::sync::Arc;
+use std::time::Duration;
+
 use sqrit::db::sqlite::SqliteAdapter;
 use sqrit::db::types::Value;
 use sqrit::db::Database;
@@ -241,6 +244,60 @@ async fn select_surfaces_declared_column_types() {
             .map(str::to_lowercase),
         Some("text".to_string())
     );
+}
+
+// T7: cancel() interrupts a long-running query within ~1s.
+//
+// Spawns a recursive-CTE query that would otherwise run for many seconds,
+// then asks the adapter to cancel. The execute future must resolve with an
+// error before the 2-second timeout.
+#[tokio::test]
+async fn cancel_interrupts_long_running_query() {
+    let (mut adapter, _file) = setup().await;
+    adapter.connect().await.unwrap();
+    let adapter = Arc::new(adapter);
+
+    let runner = Arc::clone(&adapter);
+    let handle = tokio::spawn(async move {
+        runner
+            .execute(
+                "WITH RECURSIVE c(n) AS (\
+                    SELECT 1 UNION ALL SELECT n+1 FROM c WHERE n < 100000000\
+                 ) SELECT MAX(n) FROM c",
+            )
+            .await
+    });
+
+    // Let the query actually start before we cancel — otherwise interrupt
+    // fires before the statement loop sees the flag.
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    adapter.cancel().await.unwrap();
+
+    let result = tokio::time::timeout(Duration::from_secs(2), handle)
+        .await
+        .expect("cancel did not interrupt query within 2s")
+        .expect("spawned task panicked");
+    assert!(result.is_err(), "cancelled query should return an error");
+}
+
+// T7: cancel on a never-connected adapter is a no-op (no panic, no error).
+#[tokio::test]
+async fn cancel_without_connect_is_noop() {
+    let (adapter, _file) = setup().await;
+    adapter.cancel().await.unwrap();
+}
+
+// T7: in_transaction() reports true after BEGIN, false again after COMMIT.
+#[tokio::test]
+async fn in_transaction_tracks_begin_commit() {
+    let (mut adapter, _file) = setup().await;
+    adapter.connect().await.unwrap();
+
+    assert!(!adapter.in_transaction().await.unwrap());
+    adapter.execute("BEGIN").await.unwrap();
+    assert!(adapter.in_transaction().await.unwrap());
+    adapter.execute("COMMIT").await.unwrap();
+    assert!(!adapter.in_transaction().await.unwrap());
 }
 
 // Issue #45: SQLite expressions legitimately have no declared type.
