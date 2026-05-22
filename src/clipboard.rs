@@ -194,22 +194,25 @@ fn wl_copy(text: &str) -> anyhow::Result<()> {
     use std::io::Write;
     use std::process::{Command, Stdio};
 
+    // CRITICAL: stderr MUST be `Stdio::null()`, not `Stdio::piped()`.
+    // `wl-copy` daemonises a child that inherits its open file
+    // descriptors and serves the selection until something else
+    // overwrites the clipboard — effectively forever in a TUI session.
+    // If we pipe stderr to ourselves, `child.wait()` returns when the
+    // parent exits, but `child.wait_with_output()` would block waiting
+    // for the inherited stderr pipe to EOF, which the daemon never
+    // closes. That hangs `yy` / `yc` / `ya` on every copy.
     let mut child = Command::new("wl-copy")
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
-        .stderr(Stdio::piped())
+        .stderr(Stdio::null())
         .spawn()?;
     if let Some(mut stdin) = child.stdin.take() {
         stdin.write_all(text.as_bytes())?;
     }
-    let out = child.wait_with_output()?;
-    if !out.status.success() {
-        let stderr = String::from_utf8_lossy(&out.stderr);
-        anyhow::bail!(
-            "wl-copy exited with status {}: {}",
-            out.status,
-            stderr.trim()
-        );
+    let status = child.wait()?;
+    if !status.success() {
+        anyhow::bail!("wl-copy exited with status {}", status);
     }
     Ok(())
 }
