@@ -90,71 +90,121 @@ fn json_escape(s: &str) -> String {
     format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
-/// Long-lived clipboard writer. Owns a single `arboard::Clipboard` for the
-/// lifetime of the app so that X11's selection-serve thread stays alive
-/// between user copies — dropping the `Clipboard` after every `set_text`
-/// kills that thread before the user's clipboard manager can sample the
-/// new contents (arboard logs the warning
-/// `"Clipboard was dropped very quickly after writing (0ms); clipboard
-/// managers may not have seen the contents."` in that case).
+/// Long-lived clipboard writer. The implementation chooses a backend
+/// lazily on the first `copy()`:
+///
+/// * **Linux/Wayland (`WAYLAND_DISPLAY` set, `wl-copy` available)**:
+///   shells out to `wl-copy`. arboard 3.x's Wayland path is silent on
+///   several modern compositors (verified on niri with the
+///   `examples/clipboard_repro` harness: `set_text()` returns Ok but the
+///   compositor never receives the selection). `wl-copy` daemonises
+///   itself so the selection survives `wl-copy`'s parent process exit.
+/// * **Otherwise (X11, macOS, Windows)**: owns a single
+///   `arboard::Clipboard` for the lifetime of the app so X11's
+///   selection-serve thread stays alive between user copies. Dropping
+///   `Clipboard` after every `set_text` kills that thread before the
+///   user's clipboard manager can sample the new contents (arboard logs
+///   `"Clipboard was dropped very quickly after writing (0ms); clipboard
+///   managers may not have seen the contents."` in that case).
 ///
 /// Init is lazy so headless test environments (no `$DISPLAY` / no
-/// `WAYLAND_DISPLAY`) don't pay the connection cost or fail at startup —
-/// they simply observe `copy()` returning the underlying arboard error.
-/// `init_failed` latches the first failure so we don't reattempt
-/// (and re-log) on every keystroke.
+/// `WAYLAND_DISPLAY` / no `wl-copy`) don't pay the connection cost or
+/// fail at startup — they observe `copy()` returning an error. The
+/// backend choice and a `failed` latch are cached so repeated copies
+/// don't re-probe.
 pub struct ClipboardWriter {
-    inner: Option<arboard::Clipboard>,
-    init_failed: bool,
-    /// Number of times we attempted `Clipboard::new()`. Exposed for
-    /// regression tests that lock the "one handle for the whole app"
-    /// invariant — if a future refactor reverts to per-call construction,
-    /// this counter will tick up and the test will fail.
+    backend: Backend,
+    /// Number of times the backend has been probed (arboard
+    /// `Clipboard::new()` or `wl-copy` selection). Stays at most `1` for
+    /// the lifetime of one `ClipboardWriter`; tests assert this invariant.
     init_attempts: usize,
+}
+
+enum Backend {
+    /// Backend not chosen yet — first `copy()` will probe.
+    Pending,
+    /// `wl-copy` CLI is available on `$PATH` and we're under Wayland.
+    WlCopy,
+    /// arboard handle constructed; reuse across copies.
+    Arboard(arboard::Clipboard),
+    /// Both paths failed at probe time; latched so we don't re-probe.
+    Failed,
 }
 
 impl ClipboardWriter {
     pub fn new() -> Self {
         Self {
-            inner: None,
-            init_failed: false,
+            backend: Backend::Pending,
             init_attempts: 0,
         }
     }
 
-    /// How many times the underlying `arboard::Clipboard` has been
-    /// constructed. Stays at most `1` for the lifetime of a single
-    /// `ClipboardWriter` even across repeated `copy()` calls.
     pub fn init_attempts(&self) -> usize {
         self.init_attempts
     }
 
-    /// Returns `true` once a real `arboard::Clipboard` handle is in hand.
+    /// Returns `true` once a usable backend has been chosen.
     pub fn is_initialized(&self) -> bool {
-        self.inner.is_some()
+        matches!(self.backend, Backend::WlCopy | Backend::Arboard(_))
     }
 
     pub fn copy(&mut self, text: &str) -> anyhow::Result<()> {
-        if self.inner.is_none() {
-            if self.init_failed {
-                return Err(anyhow::anyhow!("clipboard unavailable on this display"));
-            }
+        if matches!(self.backend, Backend::Pending) {
             self.init_attempts += 1;
-            match arboard::Clipboard::new() {
-                Ok(c) => self.inner = Some(c),
-                Err(e) => {
-                    self.init_failed = true;
-                    return Err(e.into());
-                }
-            }
+            self.backend = probe_backend();
         }
-        let clipboard = self
-            .inner
-            .as_mut()
-            .expect("clipboard handle just stored above");
-        clipboard.set_text(text)?;
-        Ok(())
+        match &mut self.backend {
+            Backend::WlCopy => wl_copy(text),
+            Backend::Arboard(c) => {
+                c.set_text(text)?;
+                Ok(())
+            }
+            Backend::Failed => Err(anyhow::anyhow!("clipboard unavailable on this display")),
+            Backend::Pending => unreachable!("probe sets backend above"),
+        }
     }
+}
+
+fn probe_backend() -> Backend {
+    if std::env::var_os("WAYLAND_DISPLAY").is_some() && wl_copy_available() {
+        return Backend::WlCopy;
+    }
+    match arboard::Clipboard::new() {
+        Ok(c) => Backend::Arboard(c),
+        Err(_) => Backend::Failed,
+    }
+}
+
+fn wl_copy_available() -> bool {
+    use std::process::{Command, Stdio};
+    Command::new("wl-copy")
+        .arg("--version")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+fn wl_copy(text: &str) -> anyhow::Result<()> {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+
+    let mut child = Command::new("wl-copy")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    // `wl-copy` reads stdin, then daemonises and serves the selection
+    // until something else overwrites it.
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(text.as_bytes())?;
+    }
+    let status = child.wait()?;
+    if !status.success() {
+        anyhow::bail!("wl-copy exited with status {}", status);
+    }
+    Ok(())
 }
 
 impl Default for ClipboardWriter {
