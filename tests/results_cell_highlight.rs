@@ -34,38 +34,22 @@ fn small_grid_app() -> App {
     app
 }
 
-/// Find the first buffer cell whose symbol matches `needle`. Returns (x, y).
-fn locate(terminal: &Terminal<TestBackend>, needle: &str) -> Option<(u16, u16)> {
-    let buffer = terminal.backend().buffer();
-    for y in 0..buffer.area.height {
-        for x in 0..buffer.area.width {
-            if buffer[(x, y)].symbol() == needle {
-                return Some((x, y));
-            }
-        }
-    }
-    None
-}
-
 /// Find the first buffer position where `needle` appears as a contiguous
-/// sequence of single-character symbols on the same row. Returns the (x, y)
-/// of the first character. Used so a 3-cell value like "v11" can be located
-/// unambiguously even when other cells start with "v".
+/// sequence of per-character cell symbols on the same row, panicking if
+/// not found. Iterates over `chars()` so multi-byte glyphs (and any future
+/// non-ASCII test fixture) compare correctly. Single-char needles fall out
+/// as a trivial case of the same loop.
 fn find_seq(terminal: &Terminal<TestBackend>, needle: &str) -> (u16, u16) {
-    let chars: Vec<&str> = needle
-        .as_bytes()
-        .chunks(1)
-        .map(|c| std::str::from_utf8(c).unwrap())
-        .collect();
-    assert!(!chars.is_empty(), "needle must be non-empty");
+    let needle_chars: Vec<String> = needle.chars().map(|c| c.to_string()).collect();
+    assert!(!needle_chars.is_empty(), "needle must be non-empty");
     let buffer = terminal.backend().buffer();
-    let span = chars.len() as u16 - 1;
+    let span = (needle_chars.len() - 1) as u16;
     for y in 0..buffer.area.height {
         for x in 0..buffer.area.width.saturating_sub(span) {
-            if chars
+            if needle_chars
                 .iter()
                 .enumerate()
-                .all(|(i, ch)| buffer[(x + i as u16, y)].symbol() == *ch)
+                .all(|(i, ch)| buffer[(x + i as u16, y)].symbol() == ch.as_str())
             {
                 return (x, y);
             }
@@ -106,8 +90,8 @@ fn active_column_header_carries_reverse_modifier() {
     app.results_state.selected_col = 1;
     let terminal = render(&mut app);
 
-    // Header "b" is the active column header. Find it.
-    let (x, y) = locate(&terminal, "b").expect("header 'b' not found");
+    // Header "b" is the active column header.
+    let (x, y) = find_seq(&terminal, "b");
     let cell = &terminal.backend().buffer()[(x, y)];
     assert!(
         cell.modifier.contains(Modifier::REVERSED),
@@ -143,7 +127,7 @@ fn inactive_column_header_lacks_reverse_modifier() {
     let terminal = render(&mut app);
 
     // Header "a" is column 0; unrelated to selected_col=1.
-    let (x, y) = locate(&terminal, "a").expect("header 'a' not found");
+    let (x, y) = find_seq(&terminal, "a");
     let cell = &terminal.backend().buffer()[(x, y)];
     assert!(
         !cell.modifier.contains(Modifier::REVERSED),
