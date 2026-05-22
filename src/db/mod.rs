@@ -7,6 +7,24 @@ pub mod types;
 use async_trait::async_trait;
 use types::{ColumnInfo, QueryResult, SchemaInfo};
 
+/// Skip leading whitespace, line (`--`), and block (`/* */`) comments and
+/// return the remaining SQL with leading whitespace also trimmed. Shared by
+/// adapter helpers that need to identify the first real keyword
+/// (e.g. SELECT vs DDL, BEGIN/COMMIT tracking).
+pub(crate) fn skip_leading_comments(sql: &str) -> &str {
+    let mut rest = sql;
+    loop {
+        let trimmed = rest.trim_start();
+        if let Some(stripped) = trimmed.strip_prefix("--") {
+            rest = stripped.find('\n').map_or("", |i| &stripped[i + 1..]);
+        } else if let Some(stripped) = trimmed.strip_prefix("/*") {
+            rest = stripped.find("*/").map_or("", |i| &stripped[i + 2..]);
+        } else {
+            return trimmed;
+        }
+    }
+}
+
 #[async_trait]
 pub trait Database: Send + Sync {
     async fn connect(&mut self) -> anyhow::Result<()>;

@@ -2,8 +2,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use sqlx::postgres::PgPoolOptions;
-use sqlx::{Row, TypeInfo, ValueRef};
+use sqlx::postgres::{PgConnection, PgPoolOptions};
+use sqlx::{ConnectOptions, Connection, Row, TypeInfo, ValueRef};
 
 use super::types::{sqlx_result_columns, ColumnInfo, QueryResult, SchemaInfo, TableInfo, Value};
 use super::Database;
@@ -35,45 +35,28 @@ fn pg_row_to_value(row: &sqlx::postgres::PgRow, i: usize) -> Value {
 }
 
 /// Determine if a SQL statement returns rows (SELECT, WITH/CTE, VALUES, TABLE).
-/// Skips leading whitespace, line/block comments to find the first keyword.
 fn is_query_returning_rows(sql: &str) -> bool {
-    let s = sql.trim_start();
-    if s.is_empty() {
-        return false;
-    }
-
-    // Skip over leading comments
-    let mut rest = s;
-    loop {
-        let trimmed = rest.trim_start();
-        if let Some(stripped) = trimmed.strip_prefix("--") {
-            rest = stripped.find('\n').map_or("", |i| &stripped[i + 1..]);
-        } else if let Some(stripped) = trimmed.strip_prefix("/*") {
-            rest = stripped.find("*/").map_or("", |i| &stripped[i + 2..]);
-        } else {
-            break;
-        }
-    }
-
-    let first_word = rest
-        .trim_start()
+    let first_word = super::skip_leading_comments(sql)
         .split(|c: char| !c.is_alphanumeric() && c != '_')
         .next()
         .unwrap_or("")
         .to_uppercase();
-
     matches!(first_word.as_str(), "SELECT" | "WITH" | "VALUES" | "TABLE")
 }
 
 pub struct PgAdapter {
     url: String,
+    // Pool retained for cancel()'s side connection and list_columns().
     pool: Option<sqlx::postgres::PgPool>,
-    // Backend PID of the most recent user query. cancel() reads it to target
-    // pg_cancel_backend; in_transaction() reads it to probe pg_stat_activity.
-    // Captured at execute() start, after acquiring a pool connection.
-    // Sentinel 0 = unset; PG backend PIDs are positive u32 so collision is
-    // impossible. Atomic avoids any std::sync::Mutex contact in async paths.
-    last_pid: Arc<AtomicU64>,
+    // Dedicated session pinned to the execute() path. Capturing the backend
+    // PID once at connect avoids a `SELECT pg_backend_pid()` round-trip on
+    // every user query, and keeps cancel() / in_transaction() targeting the
+    // same backend even after pool rotation would otherwise rebind a fresh
+    // connection (and PID) per query.
+    exec_conn: Arc<tokio::sync::Mutex<Option<PgConnection>>>,
+    // Backend PID of `exec_conn`, captured at connect. Sentinel 0 = unset;
+    // PG backend PIDs are positive so collision is impossible.
+    exec_pid: Arc<AtomicU64>,
 }
 
 impl PgAdapter {
@@ -81,7 +64,8 @@ impl PgAdapter {
         Self {
             url: url.to_string(),
             pool: None,
-            last_pid: Arc::new(AtomicU64::new(0)),
+            exec_conn: Arc::new(tokio::sync::Mutex::new(None)),
+            exec_pid: Arc::new(AtomicU64::new(0)),
         }
     }
 }
@@ -89,18 +73,29 @@ impl PgAdapter {
 #[async_trait]
 impl Database for PgAdapter {
     async fn connect(&mut self) -> anyhow::Result<()> {
-        // min_connections >= 2 so cancel()'s side connection always has a
-        // free slot — otherwise pool.acquire() inside cancel() could block
-        // behind the very query we are trying to cancel.
+        // min_connections >= 1 so cancel()'s side connection always has a
+        // pool slot ready — otherwise pool.acquire() inside cancel() could
+        // block at startup before the pool warms up.
         let pool = PgPoolOptions::new()
-            .min_connections(2)
+            .min_connections(1)
             .connect(&self.url)
             .await?;
+        let opts: sqlx::postgres::PgConnectOptions = self.url.parse()?;
+        let mut conn = opts.connect().await?;
+        let pid: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
+            .fetch_one(&mut conn)
+            .await?;
+        *self.exec_conn.lock().await = Some(conn);
+        self.exec_pid.store(pid as u64, Ordering::Relaxed);
         self.pool = Some(pool);
         Ok(())
     }
 
     async fn disconnect(&mut self) -> anyhow::Result<()> {
+        if let Some(conn) = self.exec_conn.lock().await.take() {
+            let _ = conn.close().await;
+        }
+        self.exec_pid.store(0, Ordering::Relaxed);
         if let Some(pool) = self.pool.take() {
             pool.close().await;
         }
@@ -108,20 +103,11 @@ impl Database for PgAdapter {
     }
 
     async fn execute(&self, query: &str) -> anyhow::Result<QueryResult> {
-        let pool = self
-            .pool
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("not connected"))?;
         let is_select = is_query_returning_rows(query);
-
-        // Pin one pool connection for the whole query so we can capture its
-        // backend PID up-front. cancel() targets that PID via a side
-        // connection; in_transaction() probes pg_stat_activity for it later.
-        let mut conn = pool.acquire().await?;
-        let pid: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
-            .fetch_one(&mut *conn)
-            .await?;
-        self.last_pid.store(pid as u64, Ordering::Relaxed);
+        let mut guard = self.exec_conn.lock().await;
+        let conn = guard
+            .as_mut()
+            .ok_or_else(|| anyhow::anyhow!("not connected"))?;
 
         if is_select {
             let rows = sqlx::query(query).fetch_all(&mut *conn).await?;
@@ -162,16 +148,15 @@ impl Database for PgAdapter {
     }
 
     async fn cancel(&self) -> anyhow::Result<()> {
-        let pid = self.last_pid.load(Ordering::Relaxed);
+        let pid = self.exec_pid.load(Ordering::Relaxed);
         if pid == 0 {
             return Ok(());
         }
         let Some(pool) = self.pool.as_ref() else {
             return Ok(());
         };
-        // Side connection from the pool — must not reuse the connection
-        // already busy running the cancelled query. PgPoolOptions
-        // min_connections in connect() guarantees a free slot.
+        // Side connection from the pool — must not reuse the pinned exec
+        // connection, which is busy with the cancelled query.
         sqlx::query("SELECT pg_cancel_backend($1)")
             .bind(pid as i32)
             .execute(pool)
@@ -180,7 +165,7 @@ impl Database for PgAdapter {
     }
 
     async fn in_transaction(&self) -> anyhow::Result<bool> {
-        let pid = self.last_pid.load(Ordering::Relaxed);
+        let pid = self.exec_pid.load(Ordering::Relaxed);
         if pid == 0 {
             return Ok(false);
         }
@@ -304,7 +289,8 @@ impl Database for PgAdapter {
         Box::new(Self {
             url: self.url.clone(),
             pool: self.pool.clone(),
-            last_pid: Arc::clone(&self.last_pid),
+            exec_conn: Arc::clone(&self.exec_conn),
+            exec_pid: Arc::clone(&self.exec_pid),
         })
     }
 }

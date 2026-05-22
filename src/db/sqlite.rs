@@ -8,10 +8,10 @@ use super::Database;
 pub struct SqliteAdapter {
     path: String,
     conn: Option<Arc<std::sync::Mutex<rusqlite::Connection>>>,
-    // Interrupt handle captured at connect-time. Shared with every clone of
-    // the adapter so cancel() reaches the same underlying connection that
-    // execute() is blocking on. `InterruptHandle` is documented as
-    // `Send + Sync` in rusqlite.
+    // Interrupt handle captured at connect-time. rusqlite's
+    // `InterruptHandle` is `Send + Sync` but not `Clone`, so the Arc layer
+    // is what lets `clone_box()` share the same handle (and therefore the
+    // same underlying connection) across spawned tasks.
     interrupt: Option<Arc<rusqlite::InterruptHandle>>,
 }
 

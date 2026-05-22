@@ -42,30 +42,11 @@ fn mysql_row_to_value(row: &sqlx::mysql::MySqlRow, i: usize) -> Value {
 }
 
 fn is_query_returning_rows(sql: &str) -> bool {
-    let s = sql.trim_start();
-    if s.is_empty() {
-        return false;
-    }
-
-    let mut rest = s;
-    loop {
-        let trimmed = rest.trim_start();
-        if let Some(stripped) = trimmed.strip_prefix("--") {
-            rest = stripped.find('\n').map_or("", |i| &stripped[i + 1..]);
-        } else if let Some(stripped) = trimmed.strip_prefix("/*") {
-            rest = stripped.find("*/").map_or("", |i| &stripped[i + 2..]);
-        } else {
-            break;
-        }
-    }
-
-    let first_word = rest
-        .trim_start()
+    let first_word = super::skip_leading_comments(sql)
         .split(|c: char| !c.is_alphanumeric() && c != '_')
         .next()
         .unwrap_or("")
         .to_uppercase();
-
     matches!(first_word.as_str(), "SELECT" | "WITH" | "VALUES" | "TABLE")
 }
 
@@ -102,25 +83,20 @@ impl MySqlAdapter {
 }
 
 fn tx_keyword(sql: &str) -> Option<bool> {
-    let mut rest = sql.trim_start();
-    loop {
-        let trimmed = rest.trim_start();
-        if let Some(stripped) = trimmed.strip_prefix("--") {
-            rest = stripped.find('\n').map_or("", |i| &stripped[i + 1..]);
-        } else if let Some(stripped) = trimmed.strip_prefix("/*") {
-            rest = stripped.find("*/").map_or("", |i| &stripped[i + 2..]);
-        } else {
-            break;
-        }
-    }
-    let first = rest
-        .trim_start()
+    let mut words = super::skip_leading_comments(sql)
         .split(|c: char| !c.is_alphanumeric() && c != '_')
-        .next()
-        .unwrap_or("")
-        .to_uppercase();
+        .filter(|s| !s.is_empty())
+        .map(str::to_uppercase);
+    let first = words.next().unwrap_or_default();
     match first.as_str() {
-        "BEGIN" | "START" => Some(true),
+        "BEGIN" => Some(true),
+        // `START` is overloaded — `START TRANSACTION` opens a tx, but
+        // `START SLAVE` / `START REPLICA` / `START GROUP_REPLICATION` are
+        // replication control statements and must not flip in_tx.
+        "START" => match words.next().as_deref() {
+            Some("TRANSACTION") => Some(true),
+            _ => None,
+        },
         "COMMIT" | "ROLLBACK" => Some(false),
         _ => None,
     }
@@ -423,5 +399,25 @@ mod tx_keyword_tests {
     fn empty_input_returns_none() {
         assert_eq!(tx_keyword(""), None);
         assert_eq!(tx_keyword("   "), None);
+    }
+
+    #[test]
+    fn start_slave_is_not_a_tx_start() {
+        assert_eq!(tx_keyword("START SLAVE"), None);
+    }
+
+    #[test]
+    fn start_replica_is_not_a_tx_start() {
+        assert_eq!(tx_keyword("start replica"), None);
+    }
+
+    #[test]
+    fn start_group_replication_is_not_a_tx_start() {
+        assert_eq!(tx_keyword("START GROUP_REPLICATION"), None);
+    }
+
+    #[test]
+    fn bare_start_alone_is_not_a_tx_start() {
+        assert_eq!(tx_keyword("START"), None);
     }
 }
