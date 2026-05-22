@@ -43,6 +43,20 @@ fn install_panic_hook_for_terminal_restore() {
     });
 }
 
+/// RAII guard that restores the terminal on drop. Pairs with the
+/// `EnableBracketedPaste` + `enable_raw_mode` setup in `App::run` so a
+/// `?`-propagated error mid-loop (e.g. an `event::read()` or `draw()`
+/// failure) still leaves the shell usable. The panic hook covers
+/// unwinds; this guard covers normal early returns.
+struct TerminalRestoreGuard;
+
+impl Drop for TerminalRestoreGuard {
+    fn drop(&mut self) {
+        let _ = disable_raw_mode();
+        let _ = crossterm::execute!(io::stdout(), DisableBracketedPaste, LeaveAlternateScreen);
+    }
+}
+
 pub enum AsyncResult {
     QueryDone {
         query_id: u64,
@@ -452,6 +466,10 @@ impl App {
         crossterm::execute!(io::stdout(), EnterAlternateScreen, EnableBracketedPaste)?;
         enable_raw_mode()?;
         install_panic_hook_for_terminal_restore();
+        // Restore the terminal on every exit path — including `?`
+        // propagation from `event::read()` / `draw()` mid-loop. Drop
+        // order guarantees we run after `terminal` is dropped.
+        let _restore = TerminalRestoreGuard;
         let backend = CrosstermBackend::new(io::stdout());
         let mut terminal = Terminal::new(backend)?;
         terminal.clear()?;
@@ -508,8 +526,9 @@ impl App {
             }
         }
 
-        disable_raw_mode()?;
-        crossterm::execute!(io::stdout(), DisableBracketedPaste, LeaveAlternateScreen)?;
+        // `TerminalRestoreGuard` runs on drop and handles the
+        // disable_raw_mode + DisableBracketedPaste + LeaveAlternateScreen
+        // sequence for both the happy path and any `?`-propagated error.
         Ok(())
     }
 
