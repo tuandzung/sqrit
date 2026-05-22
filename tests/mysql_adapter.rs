@@ -444,7 +444,7 @@ async fn cancel_interrupts_long_running_query() {
     let started = std::time::Instant::now();
     adapter.cancel().await.unwrap();
 
-    let _ = tokio::time::timeout(Duration::from_secs(2), handle)
+    let result = tokio::time::timeout(Duration::from_secs(2), handle)
         .await
         .expect("cancel did not return the future within 2s")
         .expect("spawned task panicked");
@@ -453,6 +453,15 @@ async fn cancel_interrupts_long_running_query() {
         elapsed < Duration::from_secs(2),
         "cancel must short-circuit SLEEP, took {:?}",
         elapsed
+    );
+    // MySQL contract documented in ADR 6: KILL QUERY on SELECT SLEEP(N)
+    // does NOT error — SLEEP() returns early with value 1 and the query
+    // resolves Ok. Lock this in so a future cancel-shape regression cannot
+    // silently change the user-visible cancellation contract on MySQL.
+    assert!(
+        result.is_ok(),
+        "cancelled SELECT SLEEP must resolve Ok on MySQL, got: {:?}",
+        result
     );
 }
 

@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -77,14 +78,15 @@ pub struct MySqlAdapter {
     // stable CONNECTION_ID and tx_state tracks one session's history.
     exec_conn: Arc<tokio::sync::Mutex<Option<MySqlConnection>>>,
     // CONNECTION_ID() of the pinned execute session, captured at connect.
-    // cancel() targets it via KILL QUERY.
-    exec_conn_id: Arc<std::sync::Mutex<Option<u64>>>,
+    // cancel() targets it via KILL QUERY. Sentinel 0 = unset; live MySQL
+    // CONNECTION_ID() is always > 0.
+    exec_conn_id: Arc<AtomicU64>,
     // Best-effort transaction-open flag, flipped by execute() when the SQL
     // starts with BEGIN / START TRANSACTION (true) or COMMIT / ROLLBACK
     // (false). MySQL 8 has no session-scoped `@@in_transaction` variable
     // and information_schema.innodb_trx requires the PROCESS privilege the
     // average user lacks, so we track the flag client-side instead.
-    in_tx: Arc<std::sync::Mutex<bool>>,
+    in_tx: Arc<AtomicBool>,
 }
 
 impl MySqlAdapter {
@@ -93,8 +95,8 @@ impl MySqlAdapter {
             url: url.to_string(),
             pool: None,
             exec_conn: Arc::new(tokio::sync::Mutex::new(None)),
-            exec_conn_id: Arc::new(std::sync::Mutex::new(None)),
-            in_tx: Arc::new(std::sync::Mutex::new(false)),
+            exec_conn_id: Arc::new(AtomicU64::new(0)),
+            in_tx: Arc::new(AtomicBool::new(false)),
         }
     }
 }
@@ -127,14 +129,20 @@ fn tx_keyword(sql: &str) -> Option<bool> {
 #[async_trait]
 impl Database for MySqlAdapter {
     async fn connect(&mut self) -> anyhow::Result<()> {
-        let pool = MySqlPoolOptions::new().connect(&self.url).await?;
+        // min_connections >= 1 so cancel()'s KILL QUERY always has a free
+        // side connection — the pinned exec connection lives outside the
+        // pool, but the pool itself still needs a slot free for KILL.
+        let pool = MySqlPoolOptions::new()
+            .min_connections(1)
+            .connect(&self.url)
+            .await?;
         let opts: sqlx::mysql::MySqlConnectOptions = self.url.parse()?;
         let mut conn = opts.connect().await?;
         let conn_id: u64 = sqlx::query_scalar("SELECT CONNECTION_ID()")
             .fetch_one(&mut conn)
             .await?;
         *self.exec_conn.lock().await = Some(conn);
-        *self.exec_conn_id.lock().unwrap() = Some(conn_id);
+        self.exec_conn_id.store(conn_id, Ordering::Relaxed);
         self.pool = Some(pool);
         Ok(())
     }
@@ -143,7 +151,8 @@ impl Database for MySqlAdapter {
         if let Some(conn) = self.exec_conn.lock().await.take() {
             let _ = conn.close().await;
         }
-        *self.exec_conn_id.lock().unwrap() = None;
+        self.exec_conn_id.store(0, Ordering::Relaxed);
+        self.in_tx.store(false, Ordering::Relaxed);
         if let Some(pool) = self.pool.take() {
             pool.close().await;
         }
@@ -210,16 +219,17 @@ impl Database for MySqlAdapter {
 
         if result.is_ok() {
             if let Some(state) = tx_transition {
-                *self.in_tx.lock().unwrap() = state;
+                self.in_tx.store(state, Ordering::Relaxed);
             }
         }
         result
     }
 
     async fn cancel(&self) -> anyhow::Result<()> {
-        let Some(conn_id) = *self.exec_conn_id.lock().unwrap() else {
+        let conn_id = self.exec_conn_id.load(Ordering::Relaxed);
+        if conn_id == 0 {
             return Ok(());
-        };
+        }
         let Some(pool) = self.pool.as_ref() else {
             return Ok(());
         };
@@ -233,7 +243,7 @@ impl Database for MySqlAdapter {
     }
 
     async fn in_transaction(&self) -> anyhow::Result<bool> {
-        Ok(*self.in_tx.lock().unwrap())
+        Ok(self.in_tx.load(Ordering::Relaxed))
     }
 
     async fn execute_paginated(
@@ -354,5 +364,64 @@ impl Database for MySqlAdapter {
             exec_conn_id: Arc::clone(&self.exec_conn_id),
             in_tx: Arc::clone(&self.in_tx),
         })
+    }
+}
+
+#[cfg(test)]
+mod tx_keyword_tests {
+    use super::tx_keyword;
+
+    #[test]
+    fn begin_after_line_comment() {
+        assert_eq!(tx_keyword("-- comment\n   BEGIN"), Some(true));
+    }
+
+    #[test]
+    fn start_transaction_after_block_comment() {
+        assert_eq!(
+            tx_keyword("/* block */ START TRANSACTION READ WRITE"),
+            Some(true),
+        );
+    }
+
+    #[test]
+    fn commit_after_whitespace() {
+        assert_eq!(tx_keyword("\n\t COMMIT"), Some(false));
+    }
+
+    #[test]
+    fn rollback_after_whitespace() {
+        assert_eq!(tx_keyword("  ROLLBACK"), Some(false));
+    }
+
+    #[test]
+    fn select_returns_none() {
+        assert_eq!(tx_keyword("SELECT 1"), None);
+    }
+
+    #[test]
+    fn begin_embedded_in_string_returns_none() {
+        // The leading word is SELECT, not BEGIN — even though BEGIN appears
+        // inside a literal later in the query.
+        assert_eq!(tx_keyword("SELECT 'BEGIN TRANSACTION' AS msg"), None);
+    }
+
+    #[test]
+    fn commit_embedded_in_update_returns_none() {
+        assert_eq!(
+            tx_keyword("UPDATE logs SET note = 'should not COMMIT here'"),
+            None,
+        );
+    }
+
+    #[test]
+    fn only_comments_returns_none() {
+        assert_eq!(tx_keyword("-- just a comment\n/* and another */"), None);
+    }
+
+    #[test]
+    fn empty_input_returns_none() {
+        assert_eq!(tx_keyword(""), None);
+        assert_eq!(tx_keyword("   "), None);
     }
 }
