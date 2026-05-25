@@ -51,7 +51,7 @@ impl ModeHandler for PickerHandler {
         // filter input. Push the whole first line in one shot and
         // recompute filtered_indices once, not per char (matters on
         // large connection lists).
-        let first_line = text.split('\n').next().unwrap_or("");
+        let first_line = text.split('\n').next().unwrap_or("").trim_end_matches('\r');
         if first_line.is_empty() {
             return;
         }

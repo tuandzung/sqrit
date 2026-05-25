@@ -88,9 +88,12 @@ impl ModeHandler for HistoryPickerHandler {
         let Some(p) = app.history_picker.as_mut() else {
             return;
         };
-        for c in text.split('\n').next().unwrap_or("").chars() {
-            p.filter.push(c);
+        let first_line = text.split('\n').next().unwrap_or("").trim_end_matches('\r');
+        if first_line.is_empty() {
+            return;
         }
+        p.filter.push_str(first_line);
+        p.selected = 0;
     }
 }
 

@@ -463,13 +463,13 @@ impl App {
     }
 
     pub async fn run(&mut self) -> anyhow::Result<()> {
-        crossterm::execute!(io::stdout(), EnterAlternateScreen, EnableBracketedPaste)?;
-        enable_raw_mode()?;
         install_panic_hook_for_terminal_restore();
-        // Restore the terminal on every exit path — including `?`
-        // propagation from `event::read()` / `draw()` mid-loop. Drop
-        // order guarantees we run after `terminal` is dropped.
+        crossterm::execute!(io::stdout(), EnterAlternateScreen, EnableBracketedPaste)?;
+        // Restore terminal on every exit path — `?` propagation mid-loop,
+        // normal return, or unwind. Drop order guarantees we run after
+        // `terminal` is dropped.
         let _restore = TerminalRestoreGuard;
+        enable_raw_mode()?;
         let backend = CrosstermBackend::new(io::stdout());
         let mut terminal = Terminal::new(backend)?;
         terminal.clear()?;
