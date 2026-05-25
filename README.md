@@ -10,6 +10,15 @@ The lazygit of SQL databases. Connect, query, browse — from the terminal.
 - **3-pane TUI**: Explorer sidebar, Query editor, Results table
 - **Connection picker**: filter by name, select to connect
 - **Non-blocking I/O**: async DB calls via Tokio — UI never freezes during queries or schema loads
+- **Themes**: five bundled palettes (Rose Pine, Tokyo Night, Nord, Gruvbox, Catppuccin Macchiato), live picker via `<space>t`, plus any user TOML in `~/.sqrit/themes/`
+- **Space command palette**: `<space>` arms a one-shot palette for top-level actions (maximize, theme, quit, history, cancel, disconnect)
+- **Help overlay**: `?` lists the active mode's keybindings
+- **Row filter**: `/` in Results live-filters loaded rows by case-insensitive substring across all columns
+- **Query history**: every executed query persisted to `~/.sqrit/history/<connection>.jsonl`, picker via `<space>h`
+- **Cell viewer**: `v` in Results opens a modal with raw/formatted toggle (pretty JSON, hex blobs, timezone-aware dates)
+- **Query cancel**: `<space>z` cancels the running query at the DB level (SQLite interrupt, PG `pg_cancel_backend`, MySQL `KILL QUERY`)
+- **Bracketed paste**: multi-line clipboard input survives Insert mode (no more LF → `j`)
+- **Cross-platform clipboard**: native `wl-copy` on Linux/Wayland; arboard everywhere else
 - **Zero-config UX**: run `sqrit`, pick a connection, go
 
 ## Install
@@ -28,6 +37,8 @@ On first run, the connection picker appears. Connections are stored in `~/.sqrit
 
 ### Key Bindings
 
+Press `?` in any non-insert mode for a live help overlay listing the active mode's keybindings.
+
 #### Connection Picker
 | Key | Action |
 |-----|--------|
@@ -42,6 +53,7 @@ On first run, the connection picker appears. Connections are stored in `~/.sqrit
 |-----|--------|
 | `j/k` or Up/Down | Navigate items |
 | Enter | Expand/collapse table or view |
+| `s` | `SELECT * FROM <table> LIMIT 100` |
 | `q` | Back to query editor |
 
 #### Query Editor — Normal Mode
@@ -57,15 +69,7 @@ On first run, the connection picker appears. Connections are stored in `~/.sqrit
 | `yy` | Yank line |
 | `p` | Paste below |
 | `u` | Undo |
-| `:` | Enter command mode |
 | Enter | Execute query |
-
-#### Command Mode
-| Key | Action |
-|-----|--------|
-| `:q` / `:quit` / `:q!` / `:quit!` + Enter | Quit |
-| Esc | Cancel and return to previous mode |
-| Backspace | Delete char (cancels on empty) |
 
 #### Query Editor — Insert Mode
 | Key | Action |
@@ -74,6 +78,8 @@ On first run, the connection picker appears. Connections are stored in `~/.sqrit
 | Ctrl+Enter | Execute query |
 | Enter | New line |
 | Arrow keys, Home/End | Navigation |
+| Tab | Accept autocomplete suggestion |
+| Paste | Bracketed-paste-aware (multi-line clipboard works) |
 
 #### Results Table
 | Key | Action |
@@ -84,7 +90,31 @@ On first run, the connection picker appears. Connections are stored in `~/.sqrit
 | `yc` | Copy selected cell |
 | `yy` | Copy selected row (TSV) |
 | `ya` | Copy all rows with header (TSV) |
+| `v` | Open cell viewer modal |
+| `/` | Open row filter |
+| `,c` | Clear active filter |
 | `q` | Back to query editor |
+
+#### Cell Viewer
+| Key | Action |
+|-----|--------|
+| `Tab` | Toggle raw ↔ formatted (JSON pretty, hex blob, dated text) |
+| `y` | Copy displayed string to clipboard |
+| `j/k` | Scroll |
+| `Esc` | Close |
+
+#### Space Command Palette
+A leading `<space>` from any non-insert/non-picker mode arms a one-shot palette. The next key dispatches:
+
+| Key | Action |
+|-----|--------|
+| `<space>f` | Maximize / restore focused pane |
+| `<space>t` | Theme picker (live preview, Enter persists, Esc reverts) |
+| `<space>h` | Query history picker |
+| `<space>z` | Cancel running query |
+| `<space>c` | Back to connection picker (keeps db) |
+| `<space>x` | Disconnect (clears db/schema/active connection) |
+| `<space>q` | Quit |
 
 ## Configuration
 
@@ -163,7 +193,7 @@ Single `App` struct owns all state. Three core layers:
 
 1. **Database** (`src/db/`) — `Database` trait with adapters per backend. All DB ops go through this trait. Async via `tokio::spawn` + `mpsc` channel — UI never blocks on DB calls.
 
-2. **Modes** (`src/mode.rs` + `src/mode/`) — `Mode` enum dispatches `handle_key()` to mode handlers. Modes: Picker, Explorer, QueryNormal, QueryInsert, Results, Command.
+2. **Modes** (`src/mode.rs` + `src/mode/`) — flat `Mode` enum dispatches via a `ModeHandler { dispatch, bindings, handle_paste }` trait. Help overlay reads `bindings()` from the same impl block as the dispatch, so a new key without a help entry is a one-file omission PR review catches. Modes: Picker, Explorer, QueryNormal, QueryInsert, Results, ResultsFilter, HistoryPicker, ThemePicker, Help, CellViewer.
 
 3. **Event loop** (`src/app.rs`) — 100ms poll loop. Spawns async DB tasks, drains results via `mpsc` channel. Connection happens async on picker selection — adapter created, connected, and schema loaded in a single spawned task.
 
