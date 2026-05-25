@@ -1,7 +1,7 @@
 use std::io;
 use std::time::Instant;
 
-use crossterm::event::{self, Event, KeyEventKind};
+use crossterm::event::{self, DisableBracketedPaste, EnableBracketedPaste, Event, KeyEventKind};
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
 };
@@ -25,6 +25,37 @@ use crate::editor::EditorBuffer;
 use crate::mode::editor::normal::NormalState;
 use crate::mode::Mode;
 use crate::picker::PickerState;
+
+/// Install a panic hook that restores the terminal — disables bracketed
+/// paste, leaves the alternate screen, and turns raw mode back off — so a
+/// panic doesn't leave the user's shell unusable. Idempotent: only
+/// installs the hook once even if `run()` is called multiple times.
+fn install_panic_hook_for_terminal_restore() {
+    use std::sync::Once;
+    static INIT: Once = Once::new();
+    INIT.call_once(|| {
+        let prev = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            let _ = disable_raw_mode();
+            let _ = crossterm::execute!(io::stdout(), DisableBracketedPaste, LeaveAlternateScreen);
+            prev(info);
+        }));
+    });
+}
+
+/// RAII guard that restores the terminal on drop. Pairs with the
+/// `EnableBracketedPaste` + `enable_raw_mode` setup in `App::run` so a
+/// `?`-propagated error mid-loop (e.g. an `event::read()` or `draw()`
+/// failure) still leaves the shell usable. The panic hook covers
+/// unwinds; this guard covers normal early returns.
+struct TerminalRestoreGuard;
+
+impl Drop for TerminalRestoreGuard {
+    fn drop(&mut self) {
+        let _ = disable_raw_mode();
+        let _ = crossterm::execute!(io::stdout(), DisableBracketedPaste, LeaveAlternateScreen);
+    }
+}
 
 pub enum AsyncResult {
     QueryDone {
@@ -432,7 +463,12 @@ impl App {
     }
 
     pub async fn run(&mut self) -> anyhow::Result<()> {
-        crossterm::execute!(io::stdout(), EnterAlternateScreen)?;
+        install_panic_hook_for_terminal_restore();
+        crossterm::execute!(io::stdout(), EnterAlternateScreen, EnableBracketedPaste)?;
+        // Restore terminal on every exit path — `?` propagation mid-loop,
+        // normal return, or unwind. Drop order guarantees we run after
+        // `terminal` is dropped.
+        let _restore = TerminalRestoreGuard;
         enable_raw_mode()?;
         let backend = CrosstermBackend::new(io::stdout());
         let mut terminal = Terminal::new(backend)?;
@@ -442,13 +478,20 @@ impl App {
             terminal.draw(|f| self.render(f))?;
 
             if event::poll(std::time::Duration::from_millis(100))? {
-                if let Event::Key(key) = event::read()? {
-                    if key.kind == KeyEventKind::Press {
+                match event::read()? {
+                    Event::Key(key) if key.kind == KeyEventKind::Press => {
                         // Go through `handle_key_event` so the space-prefix
                         // dispatcher (<space>t, <space>f) runs before mode
                         // handlers. Bypassing it loses the prefix.
                         self.handle_key_event(key);
                     }
+                    Event::Paste(text) => {
+                        // V9: paste events bypass the space-prefix
+                        // dispatcher — a pasted leading space must not
+                        // arm the command palette.
+                        self.mode.handler().handle_paste(&text, self);
+                    }
+                    _ => {}
                 }
             }
 
@@ -483,8 +526,9 @@ impl App {
             }
         }
 
-        disable_raw_mode()?;
-        crossterm::execute!(io::stdout(), LeaveAlternateScreen)?;
+        // `TerminalRestoreGuard` runs on drop and handles the
+        // disable_raw_mode + DisableBracketedPaste + LeaveAlternateScreen
+        // sequence for both the happy path and any `?`-propagated error.
         Ok(())
     }
 

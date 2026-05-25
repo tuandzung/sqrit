@@ -44,6 +44,21 @@ impl ModeHandler for PickerHandler {
     fn bindings(&self) -> &'static [KeyBinding] {
         BINDINGS
     }
+
+    fn handle_paste(&self, text: &str, app: &mut App) {
+        // Pickers are single-line filters — drop everything after the
+        // first newline so multi-line clipboards don't smear into the
+        // filter input. Push the whole first line in one shot and
+        // recompute filtered_indices once, not per char (matters on
+        // large connection lists).
+        let first_line = text.split('\n').next().unwrap_or("").trim_end_matches('\r');
+        if first_line.is_empty() {
+            return;
+        }
+        app.picker.filter.push_str(first_line);
+        let count = app.picker.filtered_indices(app).len();
+        app.picker.clamp_selected(count);
+    }
 }
 
 fn build_url(

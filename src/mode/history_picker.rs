@@ -83,6 +83,18 @@ impl ModeHandler for HistoryPickerHandler {
     fn bindings(&self) -> &'static [KeyBinding] {
         BINDINGS
     }
+
+    fn handle_paste(&self, text: &str, app: &mut App) {
+        let Some(p) = app.history_picker.as_mut() else {
+            return;
+        };
+        let first_line = text.split('\n').next().unwrap_or("").trim_end_matches('\r');
+        if first_line.is_empty() {
+            return;
+        }
+        p.filter.push_str(first_line);
+        p.selected = 0;
+    }
 }
 
 pub fn open(app: &mut App, origin: Mode) {

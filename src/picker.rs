@@ -60,7 +60,7 @@ impl PickerState {
         self.selected = 0;
     }
 
-    fn clamp_selected(&mut self, count: usize) {
+    pub fn clamp_selected(&mut self, count: usize) {
         if count == 0 {
             self.selected = 0;
         } else if self.selected >= count {

@@ -46,6 +46,11 @@ impl ModeHandler for InsertHandler {
     fn bindings(&self) -> &'static [KeyBinding] {
         BINDINGS
     }
+
+    fn handle_paste(&self, text: &str, app: &mut App) {
+        app.editor.insert_str(text);
+        update_autocomplete(app);
+    }
 }
 
 fn update_autocomplete(app: &mut App) {
@@ -83,6 +88,14 @@ pub fn handle_key(key: KeyEvent, app: &mut App) {
             } else {
                 app.mode = Mode::QueryNormal;
             }
+        }
+        // Defensive: terminals lacking bracketed paste (older `screen`,
+        // raw serial consoles, etc.) deliver pasted LF (0x0A) as Ctrl+J
+        // because Ctrl+J == LF in ASCII. Treat that exactly as Enter so
+        // multi-line pastes survive even on the fallback path.
+        KeyCode::Char('j') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            app.editor.insert_newline();
+            update_autocomplete(app);
         }
         KeyCode::Char(c) => {
             app.editor.insert_char(c);

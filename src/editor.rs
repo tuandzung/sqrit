@@ -63,11 +63,22 @@ impl EditorBuffer {
     }
 
     pub fn insert_str(&mut self, s: &str) {
+        self.save_undo();
         for c in s.chars() {
-            if c == '\n' {
-                self.insert_newline();
-            } else {
-                self.insert_char(c);
+            match c {
+                '\r' => {}
+                '\n' => {
+                    let rest: String = self.lines[self.cursor_row]
+                        .drain(self.cursor_col..)
+                        .collect();
+                    self.lines.insert(self.cursor_row + 1, rest);
+                    self.cursor_row += 1;
+                    self.cursor_col = 0;
+                }
+                _ => {
+                    self.lines[self.cursor_row].insert(self.cursor_col, c);
+                    self.cursor_col += 1;
+                }
             }
         }
     }

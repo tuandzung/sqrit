@@ -11,7 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 ratatui = "0.29"
-crossterm = "0.28"
+crossterm = { version = "0.28", features = ["bracketed-paste"] }
 tokio = { version = "1", features = ["full"] }
 sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "mysql", "sqlite"] }
 rusqlite = { version = "0.32", features = ["bundled", "column_decltype"] }

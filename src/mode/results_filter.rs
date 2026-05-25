@@ -32,6 +32,17 @@ impl ModeHandler for ResultsFilterHandler {
     fn bindings(&self) -> &'static [KeyBinding] {
         BINDINGS
     }
+
+    fn handle_paste(&self, text: &str, app: &mut App) {
+        let first_line = text.split('\n').next().unwrap_or("").trim_end_matches('\r');
+        if first_line.is_empty() {
+            return;
+        }
+        if let Some(f) = app.results_state.filter.as_mut() {
+            f.push_str(first_line);
+        }
+        snap(app);
+    }
 }
 
 pub fn open(app: &mut App) {
