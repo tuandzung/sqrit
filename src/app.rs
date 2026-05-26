@@ -15,6 +15,7 @@ use tokio::sync::mpsc;
 
 use crate::explorer::ExplorerState;
 use crate::results::ResultsState;
+use crate::results_render::{matched_ranges_for, render_cell};
 use crate::sql::{tokenize, TokenKind};
 
 use crate::autocomplete::AutocompleteState;
@@ -106,6 +107,7 @@ pub struct App {
     pub query_status: QueryStatus,
     pub pending_query: Option<String>,
     pub results_state: ResultsState,
+    pub fuzzy_filter: crate::filter::FuzzyFilter,
     pub last_query: Option<String>,
     pub explorer_state: ExplorerState,
     pub pending_space: bool,
@@ -166,6 +168,7 @@ impl App {
             query_status: QueryStatus::Idle,
             pending_query: None,
             results_state: ResultsState::new(),
+            fuzzy_filter: crate::filter::FuzzyFilter::new(),
             last_query: None,
             explorer_state: ExplorerState::new(),
             pending_space: false,
@@ -206,6 +209,8 @@ impl App {
                     self.query_status = status;
                     self.results_state.has_next_page = has_next_page;
                     if let Some(r) = result {
+                        let query = self.results_state.filter.as_deref().unwrap_or("");
+                        self.results_state.filter_hits = self.fuzzy_filter.rank(&r, query);
                         self.results = Some(r);
                     }
                 }
@@ -1074,7 +1079,17 @@ impl App {
                                 if row_idx == selected_row && col_idx == selected_col {
                                     style = style.add_modifier(Modifier::REVERSED);
                                 }
-                                Cell::from(val).style(style)
+                                let matched_ranges = matched_ranges_for(
+                                    &self.results_state.filter_hits,
+                                    row_idx,
+                                    col_idx,
+                                );
+                                Cell::from(Line::from(render_cell(
+                                    &val,
+                                    matched_ranges,
+                                    &self.theme,
+                                )))
+                                .style(style)
                             })
                             .collect();
                         let style = if row_idx == selected_row {

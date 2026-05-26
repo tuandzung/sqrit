@@ -34,6 +34,7 @@ pub fn test_app() -> App {
         results: None,
         query_status: QueryStatus::Idle,
         pending_query: None,
+        fuzzy_filter: sqrit::filter::FuzzyFilter::new(),
         last_query: None,
         explorer_state: ExplorerState::new(),
         pending_space: false,

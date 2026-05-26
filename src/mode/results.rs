@@ -25,7 +25,7 @@ const BINDINGS: &[KeyBinding] = &[
     },
     KeyBinding {
         key: "/",
-        action: "Filter loaded rows by substring (live, all columns)",
+        action: "Fuzzy-filter loaded rows (live, all columns)",
     },
     KeyBinding {
         key: ",c",
@@ -60,6 +60,7 @@ pub fn handle_key(key: KeyEvent, app: &mut App) {
         app.results_state.pending_comma = false;
         if let KeyCode::Char('c') = key.code {
             app.results_state.filter = None;
+            app.results_state.filter_hits.clear();
             if let Some(result) = app.results.as_ref() {
                 app.results_state.snap_selection_to_visible(result);
             }

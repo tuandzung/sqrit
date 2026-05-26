@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-05-26
+
+### Added
+
+- Added `nucleo-matcher` 0.3 as the fuzzy scoring engine for Results row filtering.
+
+### Changed
+
+- Results filtering now uses fuzzy subsequence scoring across all loaded columns, ranks matches by score, highlights matched characters, and re-ranks each newly loaded page while preserving V6 pagination boundaries.
+
 ## [0.2.0] - 2026-05-25
 
 ### Added
