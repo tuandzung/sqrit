@@ -62,6 +62,54 @@ fn slash_in_results_opens_filter_prompt() {
 }
 
 #[test]
+fn slash_in_results_recomputes_empty_filter_hits() {
+    let mut app = common::test_app();
+    seed_three_rows(&mut app);
+
+    press(
+        &mut app,
+        &[KeyCode::Char('/'), KeyCode::Char('b'), KeyCode::Enter],
+    );
+    assert_eq!(app.results_state.filter.as_deref(), Some("b"));
+    let result = app.results.as_ref().expect("results should be loaded");
+    assert_eq!(
+        app.results_state.visible_row_indices(result),
+        vec![1],
+        "visible rows should reflect non-empty filter hits"
+    );
+    assert!(
+        app.results_state
+            .filter_hits
+            .iter()
+            .any(|hit| !hit.matches.is_empty()),
+        "non-empty fuzzy filter should cache highlight ranges"
+    );
+
+    press(&mut app, &[KeyCode::Char('/')]);
+
+    assert_eq!(app.mode, Mode::ResultsFilter);
+    assert_eq!(app.results_state.filter.as_deref(), Some(""));
+    assert_eq!(
+        app.results_state.filter_hits.len(),
+        app.results.as_ref().unwrap().rows.len(),
+        "empty prompt should cache all loaded rows"
+    );
+    let result = app.results.as_ref().expect("results should be loaded");
+    assert_eq!(
+        app.results_state.visible_row_indices(result),
+        vec![0, 1, 2],
+        "visible rows should reflect empty filter hits (all rows visible)"
+    );
+    assert!(
+        app.results_state
+            .filter_hits
+            .iter()
+            .all(|hit| hit.matches.is_empty()),
+        "opening an empty prompt must clear stale fuzzy highlight ranges"
+    );
+}
+
+#[test]
 fn typing_in_filter_mode_live_filters_visible_rows() {
     let mut app = common::test_app();
     seed_three_rows(&mut app);
@@ -96,17 +144,24 @@ fn enter_locks_filter_and_returns_to_results_mode() {
 }
 
 #[test]
-fn esc_in_filter_mode_cancels_and_clears_filter() {
+fn esc_in_filter_mode_cancels_and_clears_filter_hits() {
     let mut app = common::test_app();
     seed_three_rows(&mut app);
 
-    press(
-        &mut app,
-        &[KeyCode::Char('/'), KeyCode::Char('a'), KeyCode::Esc],
+    press(&mut app, &[KeyCode::Char('/'), KeyCode::Char('a')]);
+    assert!(
+        !app.results_state.filter_hits.is_empty(),
+        "typing a filter should populate fuzzy highlight hits"
     );
+
+    press(&mut app, &[KeyCode::Esc]);
 
     assert_eq!(app.mode, Mode::Results);
     assert_eq!(app.results_state.filter, None);
+    assert!(
+        app.results_state.filter_hits.is_empty(),
+        "canceling the filter must clear stale fuzzy highlight hits"
+    );
 }
 
 #[test]

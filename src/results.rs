@@ -1,22 +1,4 @@
-use crate::db::types::{QueryResult, ResultColumn, Row};
-
-pub fn row_matches(row: &Row, columns: &[ResultColumn], filter: &str) -> bool {
-    if filter.is_empty() {
-        return true;
-    }
-    row_matches_lowered(row, columns, &filter.to_lowercase())
-}
-
-fn row_matches_lowered(row: &Row, columns: &[ResultColumn], needle_lower: &str) -> bool {
-    if needle_lower.is_empty() {
-        return true;
-    }
-    columns.iter().any(|c| {
-        row.get(&c.name)
-            .map(|v| v.to_string().to_lowercase().contains(needle_lower))
-            .unwrap_or(false)
-    })
-}
+use crate::db::types::QueryResult;
 
 pub struct ResultsState {
     pub selected_row: usize,
@@ -29,6 +11,7 @@ pub struct ResultsState {
     pub pending_yank: bool,
     pub pending_comma: bool,
     pub filter: Option<String>,
+    pub filter_hits: Vec<crate::filter::FilterHit>,
 }
 
 impl Default for ResultsState {
@@ -44,6 +27,7 @@ impl Default for ResultsState {
             pending_yank: false,
             pending_comma: false,
             filter: None,
+            filter_hits: Vec::new(),
         }
     }
 }
@@ -111,17 +95,11 @@ impl ResultsState {
     }
 
     pub fn visible_row_indices(&self, result: &QueryResult) -> Vec<usize> {
-        let Some(term) = self.filter.as_deref() else {
-            return (0..result.rows.len()).collect();
-        };
-        let needle = term.to_lowercase();
-        result
-            .rows
-            .iter()
-            .enumerate()
-            .filter(|(_, r)| row_matches_lowered(r, &result.columns, &needle))
-            .map(|(i, _)| i)
-            .collect()
+        match self.filter.as_deref() {
+            None | Some("") => (0..result.rows.len()).collect(),
+            Some(_) if self.filter_hits.is_empty() => Vec::new(),
+            Some(_) => self.filter_hits.iter().map(|hit| hit.row_index).collect(),
+        }
     }
 
     pub fn move_down_visible(&mut self, result: &QueryResult) {

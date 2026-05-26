@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 
+use sqrit::db::types::QueryResult;
 use sqrit::db::types::{ResultColumn, Value};
-use sqrit::results::row_matches;
+use sqrit::filter::FuzzyFilter;
 
 fn row(pairs: &[(&str, Value)]) -> HashMap<String, Value> {
     pairs
@@ -14,19 +15,29 @@ fn cols(names: &[&str]) -> Vec<ResultColumn> {
     names.iter().map(|n| ResultColumn::untyped(*n)).collect()
 }
 
-#[test]
-fn empty_filter_matches_anything() {
-    let r = row(&[("name", Value::Text("alice".into()))]);
-    assert!(row_matches(&r, &cols(&["name"]), ""));
+fn rank_one(row: HashMap<String, Value>, columns: Vec<ResultColumn>, query: &str) -> bool {
+    let result = QueryResult {
+        columns,
+        rows: vec![row],
+        rows_affected: None,
+        total_count: None,
+    };
+    !FuzzyFilter::new().rank(&result, query).is_empty()
 }
 
 #[test]
-fn substring_match_is_case_insensitive() {
+fn empty_filter_matches_anything() {
+    let r = row(&[("name", Value::Text("alice".into()))]);
+    assert!(rank_one(r, cols(&["name"]), ""));
+}
+
+#[test]
+fn subsequence_match_is_case_insensitive() {
     let r = row(&[("name", Value::Text("Alice".into()))]);
     let c = cols(&["name"]);
-    assert!(row_matches(&r, &c, "ali"));
-    assert!(row_matches(&r, &c, "ALI"));
-    assert!(row_matches(&r, &c, "LIC"));
+    assert!(rank_one(r.clone(), c.clone(), "ali"));
+    assert!(rank_one(r.clone(), c.clone(), "ALI"));
+    assert!(rank_one(r, c, "aie"));
 }
 
 #[test]
@@ -37,9 +48,9 @@ fn match_spans_all_columns() {
     ]);
     let c = cols(&["name", "city"]);
 
-    assert!(row_matches(&r, &c, "ber"));
-    assert!(row_matches(&r, &c, "bob"));
-    assert!(!row_matches(&r, &c, "paris"));
+    assert!(rank_one(r.clone(), c.clone(), "brl"));
+    assert!(rank_one(r.clone(), c.clone(), "bob"));
+    assert!(!rank_one(r, c, "paris"));
 }
 
 #[test]
@@ -47,13 +58,13 @@ fn matches_against_non_text_value_renderings() {
     let r = row(&[("id", Value::Integer(42)), ("active", Value::Boolean(true))]);
     let c = cols(&["id", "active"]);
 
-    assert!(row_matches(&r, &c, "42"));
-    assert!(row_matches(&r, &c, "true"));
+    assert!(rank_one(r.clone(), c.clone(), "42"));
+    assert!(rank_one(r, c, "true"));
 }
 
 #[test]
 fn null_renders_to_null_for_matching() {
     let r = row(&[("note", Value::Null)]);
     let c = cols(&["note"]);
-    assert!(row_matches(&r, &c, "null"));
+    assert!(rank_one(r, c, "null"));
 }

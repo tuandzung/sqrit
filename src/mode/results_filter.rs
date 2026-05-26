@@ -8,7 +8,7 @@ pub struct ResultsFilterHandler;
 const BINDINGS: &[KeyBinding] = &[
     KeyBinding {
         key: "Type",
-        action: "Substring-filter loaded rows (case-insensitive, any column)",
+        action: "Fuzzy-filter loaded rows (subsequence, any column)",
     },
     KeyBinding {
         key: "Backspace",
@@ -41,12 +41,13 @@ impl ModeHandler for ResultsFilterHandler {
         if let Some(f) = app.results_state.filter.as_mut() {
             f.push_str(first_line);
         }
-        snap(app);
+        recompute(app);
     }
 }
 
 pub fn open(app: &mut App) {
     app.results_state.filter = Some(String::new());
+    recompute(app);
     app.mode = Mode::ResultsFilter;
 }
 
@@ -54,6 +55,7 @@ pub fn handle_key(key: KeyEvent, app: &mut App) {
     match key.code {
         KeyCode::Esc => {
             app.results_state.filter = None;
+            app.results_state.filter_hits.clear();
             app.mode = Mode::Results;
         }
         KeyCode::Enter => {
@@ -63,26 +65,28 @@ pub fn handle_key(key: KeyEvent, app: &mut App) {
                 }
             }
             app.mode = Mode::Results;
-            snap(app);
+            recompute(app);
         }
         KeyCode::Backspace => {
             if let Some(f) = app.results_state.filter.as_mut() {
                 f.pop();
             }
-            snap(app);
+            recompute(app);
         }
         KeyCode::Char(c) => {
             if let Some(f) = app.results_state.filter.as_mut() {
                 f.push(c);
             }
-            snap(app);
+            recompute(app);
         }
         _ => {}
     }
 }
 
-fn snap(app: &mut App) {
+fn recompute(app: &mut App) {
     if let Some(result) = app.results.as_ref() {
+        let query = app.results_state.filter.as_deref().unwrap_or("");
+        app.results_state.filter_hits = app.fuzzy_filter.rank(result, query);
         app.results_state.snap_selection_to_visible(result);
     }
 }

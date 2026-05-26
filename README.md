@@ -13,7 +13,7 @@ The lazygit of SQL databases. Connect, query, browse — from the terminal.
 - **Themes**: five bundled palettes (Rose Pine, Tokyo Night, Nord, Gruvbox, Catppuccin Macchiato), live picker via `<space>t`, plus any user TOML in `~/.sqrit/themes/`
 - **Space command palette**: `<space>` arms a one-shot palette for top-level actions (maximize, theme, quit, history, cancel, disconnect)
 - **Help overlay**: `?` lists the active mode's keybindings
-- **Row filter**: `/` in Results live-filters loaded rows by case-insensitive substring across all columns
+- **Fuzzy row filter**: `/` in Results live-filters loaded rows by subsequence match across all columns; matched chars highlighted
 - **Query history**: every executed query persisted to `~/.sqrit/history/<connection>.jsonl`, picker via `<space>h`
 - **Cell viewer**: `v` in Results opens a modal with raw/formatted toggle (pretty JSON, hex blobs, timezone-aware dates)
 - **Query cancel**: `<space>z` cancels the running query at the DB level (SQLite interrupt, PG `pg_cancel_backend`, MySQL `KILL QUERY`)
@@ -91,7 +91,7 @@ Press `?` in any non-insert mode for a live help overlay listing the active mode
 | `yy` | Copy selected row (TSV) |
 | `ya` | Copy all rows with header (TSV) |
 | `v` | Open cell viewer modal |
-| `/` | Open row filter |
+| `/` | Open fuzzy row filter (matched chars highlighted) |
 | `,c` | Clear active filter |
 | `q` | Back to query editor |
 

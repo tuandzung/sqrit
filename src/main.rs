@@ -6,10 +6,12 @@ pub mod config;
 pub mod db;
 pub mod editor;
 pub mod explorer;
+pub mod filter;
 pub mod history;
 pub mod mode;
 pub mod picker;
 pub mod results;
+pub mod results_render;
 pub mod sql;
 pub mod theme;
 
