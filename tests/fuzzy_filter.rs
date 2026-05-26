@@ -67,6 +67,14 @@ fn subsequence_match_scores_nonzero_and_filters_misses() {
 }
 
 #[test]
+fn no_hits_returns_empty_vector() {
+    let result = make_result(&["value"], vec![vec!["abc"]]);
+    let mut filter = FuzzyFilter::new();
+    let hits = filter.rank(&result, "xyz");
+    assert!(hits.is_empty());
+}
+
+#[test]
 fn match_spans_carry_column_index() {
     let result = make_result(
         &["id", "email", "note"],
@@ -97,6 +105,17 @@ fn exact_substring_outranks_scattered_subsequence() {
     let hits = filter.rank(&result, "abcorp");
     assert!(hits.len() >= 2);
     assert_eq!(hits[0].row_index, 0);
+}
+
+#[test]
+fn equal_scores_keep_original_row_order() {
+    let result = make_result(&["email"], vec![vec!["alice"], vec!["alice"]]);
+    let mut filter = FuzzyFilter::new();
+    let hits = filter.rank(&result, "ali");
+    assert_eq!(hits.len(), 2);
+    assert_eq!(hits[0].score, hits[1].score);
+    let order: Vec<usize> = hits.iter().map(|h| h.row_index).collect();
+    assert_eq!(order, vec![0, 1]);
 }
 
 #[test]

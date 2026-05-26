@@ -71,6 +71,12 @@ fn slash_in_results_recomputes_empty_filter_hits() {
         &[KeyCode::Char('/'), KeyCode::Char('b'), KeyCode::Enter],
     );
     assert_eq!(app.results_state.filter.as_deref(), Some("b"));
+    let result = app.results.as_ref().expect("results should be loaded");
+    assert_eq!(
+        app.results_state.visible_row_indices(result),
+        vec![1],
+        "visible rows should reflect non-empty filter hits"
+    );
     assert!(
         app.results_state
             .filter_hits
@@ -87,6 +93,12 @@ fn slash_in_results_recomputes_empty_filter_hits() {
         app.results_state.filter_hits.len(),
         app.results.as_ref().unwrap().rows.len(),
         "empty prompt should cache all loaded rows"
+    );
+    let result = app.results.as_ref().expect("results should be loaded");
+    assert_eq!(
+        app.results_state.visible_row_indices(result),
+        vec![0, 1, 2],
+        "visible rows should reflect empty filter hits (all rows visible)"
     );
     assert!(
         app.results_state
