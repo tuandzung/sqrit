@@ -1,10 +1,88 @@
 mod common;
 
-use sqrit::app::{App, QueryStatus};
+use std::collections::HashMap;
+
+use sqrit::app::{App, AsyncResult, QueryStatus};
+use sqrit::db::types::{QueryResult, ResultColumn, Value};
 use sqrit::db::Database;
+use sqrit::results_render::{matched_ranges_for, render_cell};
 
 fn make_connected_app() -> App {
     common::test_app()
+}
+
+#[test]
+fn accepted_page_result_reranks_committed_filter_before_exposure() {
+    let mut app = make_connected_app();
+    let old_result = QueryResult {
+        columns: vec![ResultColumn::untyped("name"), ResultColumn::untyped("city")],
+        rows: vec![
+            HashMap::from([
+                ("name".into(), Value::Text("zero".into())),
+                ("city".into(), Value::Text("Paris".into())),
+            ]),
+            HashMap::from([
+                ("name".into(), Value::Text("one".into())),
+                ("city".into(), Value::Text("Rome".into())),
+            ]),
+            HashMap::from([
+                ("name".into(), Value::Text("two".into())),
+                ("city".into(), Value::Text("lilac".into())),
+            ]),
+        ],
+        rows_affected: None,
+        total_count: None,
+    };
+    app.results_state.filter = Some("li".into());
+    app.results_state.filter_hits = app.fuzzy_filter.rank(&old_result, "li");
+    app.results = Some(old_result);
+    app.query_id = 7;
+
+    let new_result = QueryResult {
+        columns: vec![ResultColumn::untyped("label")],
+        rows: vec![HashMap::from([(
+            "label".into(),
+            Value::Text("lima".into()),
+        )])],
+        rows_affected: None,
+        total_count: None,
+    };
+    app.async_tx
+        .send(AsyncResult::QueryDone {
+            query_id: 7,
+            status: QueryStatus::Success,
+            result: Some(new_result),
+            has_next_page: false,
+        })
+        .unwrap();
+    app.drain_async_results();
+
+    let result = app.results.as_ref().unwrap();
+    let visible = app.results_state.visible_row_indices(result);
+    let coordinates: Vec<_> = app
+        .results_state
+        .filter_hits
+        .iter()
+        .flat_map(|hit| {
+            hit.matches
+                .iter()
+                .map(move |(column, range)| (hit.row_index, *column, range.clone()))
+        })
+        .collect();
+    let rendered = render_cell(
+        "lima",
+        matched_ranges_for(&app.results_state.filter_hits, 0, 0),
+        &app.theme,
+    )
+    .into_iter()
+    .map(|span| span.content)
+    .collect::<Vec<_>>()
+    .concat();
+
+    assert_eq!(
+        (result.column_names(), visible, coordinates, rendered),
+        (vec!["label"], vec![0], vec![(0, 0, 0..2)], "lima".into())
+    );
 }
 
 // V2: execute_pending must not block — spawns task, returns immediately
