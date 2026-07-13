@@ -10,7 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- Added `nucleo-matcher` 0.3 as the fuzzy scoring engine for Results row filtering.
+- Added `nucleo-matcher` 0.3 (MPL-2.0) as the fuzzy scoring engine for Results row filtering.
 
 ### Changed
 
