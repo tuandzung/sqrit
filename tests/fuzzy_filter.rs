@@ -166,3 +166,29 @@ fn matcher_highlights_preserve_complex_cell_text() {
         );
     }
 }
+
+#[test]
+fn control_characters_are_stripped_without_changing_printable_queries() {
+    let result = make_result(&["value"], vec![vec!["alice"], vec!["café"], vec!["bob"]]);
+    let mut filter = FuzzyFilter::new();
+    let actual: Vec<Vec<(usize, bool)>> = ["a\u{0}li", "\u{0}\u{7}", "a li", "é"]
+        .into_iter()
+        .map(|query| {
+            filter
+                .rank(&result, query)
+                .into_iter()
+                .map(|hit| (hit.row_index, hit.matches.is_empty()))
+                .collect()
+        })
+        .collect();
+
+    assert_eq!(
+        actual,
+        vec![
+            vec![(0, false)],
+            vec![(0, true), (1, true), (2, true)],
+            vec![(0, false)],
+            vec![(1, false)],
+        ]
+    );
+}
