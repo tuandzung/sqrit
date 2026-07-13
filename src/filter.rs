@@ -39,6 +39,7 @@ impl FuzzyFilter {
     /// An empty `query` returns one `FilterHit` per row in original order with
     /// `score = 0` and `matches = []`.
     pub fn rank(&mut self, result: &QueryResult, query: &str) -> Vec<FilterHit> {
+        let query: String = query.chars().filter(|c| !c.is_control()).collect();
         let query = query.trim();
         if query.is_empty() {
             return (0..result.rows.len())

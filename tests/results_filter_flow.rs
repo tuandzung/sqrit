@@ -302,3 +302,33 @@ fn snap_clamps_scroll_row_within_filtered_set() {
         "scroll_row must clamp to max(0, visible.len() - visible_rows) when the filtered set shrinks"
     );
 }
+
+#[test]
+fn typed_and_pasted_controls_do_not_change_filter_matches() {
+    let mut typed = common::test_app();
+    seed_three_rows(&mut typed);
+    press(
+        &mut typed,
+        &[
+            KeyCode::Char('/'),
+            KeyCode::Char('b'),
+            KeyCode::Char('\u{7}'),
+            KeyCode::Char('o'),
+        ],
+    );
+    let typed_rows = typed
+        .results_state
+        .visible_row_indices(typed.results.as_ref().unwrap());
+
+    let mut pasted = common::test_app();
+    seed_three_rows(&mut pasted);
+    press(&mut pasted, &[KeyCode::Char('/')]);
+    Mode::ResultsFilter
+        .handler()
+        .handle_paste("b\u{7}o", &mut pasted);
+    let pasted_rows = pasted
+        .results_state
+        .visible_row_indices(pasted.results.as_ref().unwrap());
+
+    assert_eq!([typed_rows, pasted_rows], [vec![1], vec![1]]);
+}
