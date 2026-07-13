@@ -6,7 +6,7 @@
 use std::ops::Range;
 
 use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
-use nucleo_matcher::{Config, Matcher, Utf32Str};
+use nucleo_matcher::{chars::graphemes, Config, Matcher, Utf32Str};
 
 use crate::db::types::{QueryResult, ResultColumn, Row};
 
@@ -76,10 +76,17 @@ impl FuzzyFilter {
             };
             let text = value.to_string();
             self.haystack_buf.clear();
-            let haystack = Utf32Str::new(&text, &mut self.haystack_buf);
+            let haystack = if text.is_ascii() {
+                Utf32Str::Ascii(text.as_bytes())
+            } else {
+                self.haystack_buf.extend(graphemes(&text));
+                Utf32Str::Unicode(&self.haystack_buf)
+            };
             self.indices.clear();
             if let Some(score) = pattern.indices(haystack, &mut self.matcher, &mut self.indices) {
                 total = total.saturating_add(score);
+                self.indices.sort_unstable();
+                self.indices.dedup();
                 for range in contiguous_ranges(&self.indices) {
                     matches.push((col_idx, range));
                 }
@@ -96,9 +103,8 @@ impl FuzzyFilter {
     }
 }
 
-/// One scored row. `matches` is `(column index, char range)`; the range is in
-/// `chars()` units of the column's `Display` rendering — the renderer must
-/// walk by chars, not bytes.
+/// One scored row. `matches` is `(column index, grapheme range)`; the range is
+/// in grapheme units of the column's `Display` rendering.
 #[derive(Debug, Clone)]
 pub struct FilterHit {
     pub row_index: usize,
