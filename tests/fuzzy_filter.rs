@@ -1,5 +1,9 @@
+use ratatui::style::Modifier;
 use sqrit::db::types::{QueryResult, ResultColumn, Row, Value};
 use sqrit::filter::FuzzyFilter;
+use sqrit::results_render::{matched_ranges_for, render_cell};
+use sqrit::theme::Theme;
+use unicode_segmentation::UnicodeSegmentation;
 
 fn make_result(cols: &[&str], rows: Vec<Vec<&str>>) -> QueryResult {
     let columns: Vec<ResultColumn> = cols
@@ -119,17 +123,46 @@ fn equal_scores_keep_original_row_order() {
 }
 
 #[test]
-fn unicode_haystack_does_not_panic_and_ranges_are_char_based() {
+fn unicode_haystack_does_not_panic_and_ranges_are_grapheme_based() {
     let result = make_result(&["note"], vec![vec!["中文测试 alice"], vec!["only ascii"]]);
     let mut filter = FuzzyFilter::new();
     let hits = filter.rank(&result, "alice");
     assert!(hits.iter().any(|h| h.row_index == 0));
     if let Some(hit) = hits.iter().find(|h| h.row_index == 0) {
         let text = "中文测试 alice";
-        let chars: Vec<char> = text.chars().collect();
+        let graphemes: Vec<&str> = text.graphemes(true).collect();
         for (_col, range) in &hit.matches {
-            assert!(range.end <= chars.len(), "range out of char bounds");
+            assert!(range.end <= graphemes.len(), "range out of grapheme bounds");
             assert!(range.start <= range.end);
         }
+    }
+}
+
+#[test]
+fn matcher_highlights_preserve_complex_cell_text() {
+    let theme = Theme::default_theme();
+
+    for (text, query, expected_highlight) in [("aba", "a a", "a"), ("e\u{301}x", "ex", "e\u{301}x")]
+    {
+        let result = make_result(&["value"], vec![vec![text]]);
+        let mut filter = FuzzyFilter::new();
+        let hits = filter.rank(&result, query);
+        let spans = render_cell(text, matched_ranges_for(&hits, 0, 0), &theme);
+        let rendered = spans
+            .iter()
+            .map(|span| span.content.as_ref())
+            .collect::<Vec<_>>()
+            .concat();
+        let highlighted = spans
+            .iter()
+            .filter(|span| span.style.add_modifier.contains(Modifier::BOLD))
+            .map(|span| span.content.as_ref())
+            .collect::<Vec<_>>()
+            .concat();
+
+        assert_eq!(
+            (rendered.as_str(), highlighted.as_str()),
+            (text, expected_highlight)
+        );
     }
 }

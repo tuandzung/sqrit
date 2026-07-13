@@ -2,6 +2,7 @@ use std::ops::Range;
 
 use ratatui::style::{Modifier, Style};
 use ratatui::text::Span;
+use unicode_segmentation::UnicodeSegmentation;
 
 use crate::filter::FilterHit;
 use crate::theme::Theme;
@@ -32,7 +33,7 @@ pub fn render_cell(
         return vec![Span::raw(text.to_string())];
     }
 
-    let chars: Vec<char> = text.chars().collect();
+    let graphemes: Vec<&str> = text.graphemes(true).collect();
     let mut spans = Vec::new();
     let mut cursor = 0usize;
     let highlight_style = Style::default()
@@ -40,23 +41,23 @@ pub fn render_cell(
         .add_modifier(Modifier::BOLD | Modifier::UNDERLINED);
 
     for range in ranges {
-        let start = range.start.min(chars.len());
-        let end = range.end.min(chars.len());
+        let start = range.start.min(graphemes.len());
+        let end = range.end.min(graphemes.len());
         if start >= end {
             continue;
         }
         if cursor < start {
-            spans.push(Span::raw(chars[cursor..start].iter().collect::<String>()));
+            spans.push(Span::raw(graphemes[cursor..start].concat()));
         }
         spans.push(Span::styled(
-            chars[start..end].iter().collect::<String>(),
+            graphemes[start..end].concat(),
             highlight_style,
         ));
         cursor = end;
     }
 
-    if cursor < chars.len() {
-        spans.push(Span::raw(chars[cursor..].iter().collect::<String>()));
+    if cursor < graphemes.len() {
+        spans.push(Span::raw(graphemes[cursor..].concat()));
     }
 
     if spans.is_empty() {
