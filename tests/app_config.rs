@@ -23,6 +23,7 @@ fn save_to_roundtrips_through_disk() {
     let path = dir.path().join("config.toml");
     let cfg = AppConfig {
         theme: Some("gruvbox".to_string()),
+        ..Default::default()
     };
 
     cfg.save_to(&path).unwrap();
@@ -57,4 +58,26 @@ fn load_from_returns_theme_name_when_present() {
     let cfg = AppConfig::load_from(&path).unwrap();
 
     assert_eq!(cfg.theme.as_deref(), Some("nord"));
+}
+
+#[test]
+fn load_without_hint_bar_uses_defaults() {
+    let toml_str = r#"theme = "tokyo-night""#;
+    let cfg: AppConfig = toml::from_str(toml_str).unwrap();
+
+    assert!(cfg.hint_bar.enabled);
+    assert!(!cfg.hint_bar.auto_hide_narrow);
+}
+
+#[test]
+fn load_with_partial_hint_bar_section() {
+    let toml_str = r#"
+theme = "nord"
+[hint_bar]
+enabled = false
+"#;
+    let cfg: AppConfig = toml::from_str(toml_str).unwrap();
+
+    assert!(!cfg.hint_bar.enabled);
+    assert!(!cfg.hint_bar.auto_hide_narrow);
 }
