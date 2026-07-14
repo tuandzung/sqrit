@@ -7,6 +7,7 @@ pub mod db;
 pub mod editor;
 pub mod explorer;
 pub mod filter;
+pub mod hint_bar;
 pub mod history;
 pub mod mode;
 pub mod picker;
