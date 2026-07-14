@@ -7,20 +7,20 @@ pub struct ResultsFilterHandler;
 
 const BINDINGS: &[KeyBinding] = &[
     KeyBinding {
-        key: "Type",
-        action: "Fuzzy-filter loaded rows (subsequence, any column)",
-    },
-    KeyBinding {
-        key: "Backspace",
-        action: "Delete one character from the filter",
+        key: "Esc",
+        action: "Cancel and clear the filter",
     },
     KeyBinding {
         key: "Enter",
         action: "Lock the filter and return to Results navigation",
     },
     KeyBinding {
-        key: "Esc",
-        action: "Cancel and clear the filter",
+        key: "Type",
+        action: "Fuzzy-filter loaded rows (subsequence, any column)",
+    },
+    KeyBinding {
+        key: "Backspace",
+        action: "Delete one character from the filter",
     },
 ];
 

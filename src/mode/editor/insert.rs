@@ -9,6 +9,18 @@ pub struct InsertHandler;
 
 const BINDINGS: &[KeyBinding] = &[
     KeyBinding {
+        key: "Ctrl+Enter",
+        action: "Execute the current query",
+    },
+    KeyBinding {
+        key: "Esc",
+        action: "Dismiss autocomplete or return to Normal mode",
+    },
+    KeyBinding {
+        key: "Tab",
+        action: "Accept autocomplete suggestion",
+    },
+    KeyBinding {
         key: "<any char>",
         action: "Insert literal character",
     },
@@ -21,20 +33,8 @@ const BINDINGS: &[KeyBinding] = &[
         action: "Insert newline",
     },
     KeyBinding {
-        key: "Ctrl+Enter",
-        action: "Execute the current query",
-    },
-    KeyBinding {
-        key: "Tab",
-        action: "Accept autocomplete suggestion",
-    },
-    KeyBinding {
         key: "Arrows / Home / End",
         action: "Move cursor",
-    },
-    KeyBinding {
-        key: "Esc",
-        action: "Dismiss autocomplete or return to Normal mode",
     },
 ];
 
