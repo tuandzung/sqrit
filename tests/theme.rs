@@ -271,3 +271,50 @@ fn parse_valid_toml_yields_all_fields() {
     assert_eq!(theme.type_, Color::Rgb(0x7d, 0xcf, 0xff));
     assert_eq!(theme.error, Color::Rgb(0xf7, 0x76, 0x8e));
 }
+
+#[test]
+fn theme_without_hint_bar_section_falls_back_to_palette() {
+    let toml_str = r##"
+name = "minimal"
+[colors]
+bg = "#000000"
+fg = "#ffffff"
+border_focused = "#aaaaaa"
+border_unfocused = "#444444"
+selection_bg = "#222222"
+keyword = "#ff00ff"
+string = "#00ff00"
+comment = "#666666"
+number = "#0000ff"
+type = "#00ffff"
+error = "#ff0000"
+"##;
+    let t = Theme::parse(toml_str).unwrap();
+    assert_eq!(t.hint_bar_bg, t.bg);
+    assert_eq!(t.hint_bar_fg, t.fg);
+    assert_eq!(t.hint_bar_key, t.border_focused);
+    assert_eq!(t.hint_bar_separator, t.border_unfocused);
+}
+
+#[test]
+fn theme_with_partial_hint_bar_section_overrides_only_present_fields() {
+    let toml_str = r##"
+name = "partial"
+[colors]
+bg = "#000000"
+fg = "#ffffff"
+border_focused = "#aaaaaa"
+border_unfocused = "#444444"
+selection_bg = "#222222"
+keyword = "#ff00ff"
+string = "#00ff00"
+comment = "#666666"
+number = "#0000ff"
+type = "#00ffff"
+error = "#ff0000"
+hint_bar_key = "#abcdef"
+"##;
+    let t = Theme::parse(toml_str).unwrap();
+    assert_eq!(t.hint_bar_key, Color::Rgb(0xab, 0xcd, 0xef));
+    assert_eq!(t.hint_bar_bg, t.bg);
+}
