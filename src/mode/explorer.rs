@@ -58,7 +58,12 @@ pub fn handle_key(key: KeyEvent, app: &mut App) {
                     } => (ns, *kind, parent),
                     _ => return,
                 };
-                app.query_status = QueryStatus::Idle;
+                if matches!(
+                    &app.query_status,
+                    QueryStatus::Success | QueryStatus::Error(_)
+                ) {
+                    app.query_status = QueryStatus::Idle;
+                }
                 app.status_message.clear();
                 if !kind.supports_select_star() {
                     app.status_message = format!(

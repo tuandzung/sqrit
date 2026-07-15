@@ -157,6 +157,34 @@ fn pressing_s_on_an_index_replaces_prior_query_error() {
 }
 
 #[test]
+fn unsupported_s_preserves_running_query_status() {
+    let mut app = make_explorer_app(DbType::Sqlite, "");
+    select_object(&mut app, ObjectKind::Index);
+    app.query_status = QueryStatus::Running;
+
+    press(&mut app, KeyCode::Char('s'));
+
+    assert_eq!(app.query_status, QueryStatus::Running);
+    assert!(app.pending_query.is_none());
+    assert!(app.status_bar_text().contains("running..."));
+    assert!(app.status_bar_text().contains("no SELECT"));
+}
+
+#[test]
+fn supported_s_preserves_running_status_until_execution() {
+    let mut app = make_explorer_app(DbType::Sqlite, "");
+    select_object(&mut app, ObjectKind::Table);
+    app.query_status = QueryStatus::Running;
+    app.status_message = "stale action".to_string();
+
+    press(&mut app, KeyCode::Char('s'));
+
+    assert_eq!(app.query_status, QueryStatus::Running);
+    assert!(app.pending_query.is_some());
+    assert!(app.status_message.is_empty());
+}
+
+#[test]
 fn s_on_supported_object_clears_previous_action_status() {
     let mut app = make_explorer_app(DbType::Sqlite, "");
     select_object(&mut app, ObjectKind::Index);
