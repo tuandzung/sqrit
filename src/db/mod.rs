@@ -1,6 +1,7 @@
 pub mod adapter;
 pub mod mysql;
 pub mod postgres;
+pub mod quote;
 pub mod sqlite;
 pub mod types;
 
