@@ -1,133 +1,301 @@
 mod common;
 
+use ratatui::backend::TestBackend;
+use ratatui::Terminal;
 use sqrit::app::{App, FocusedPane};
-use sqrit::db::types::{ColumnInfo, SchemaInfo, TableInfo};
-use sqrit::explorer::{ExplorerState, TreeItem};
+use sqrit::db::types::{
+    ColumnInfo, IndexObject, Namespace, ObjectKind, SchemaInfo, TableObject, TriggerObject,
+    ViewObject,
+};
+use sqrit::explorer::{ExplorerState, NodeKey, TreeItem};
 use sqrit::mode::Mode;
 
-fn make_schema() -> SchemaInfo {
-    SchemaInfo {
-        tables: vec![
-            TableInfo {
-                name: "users".to_string(),
-                columns: vec![
-                    ColumnInfo {
-                        name: "id".to_string(),
-                        data_type: "INTEGER".to_string(),
-                        nullable: false,
-                        is_primary_key: true,
-                    },
-                    ColumnInfo {
-                        name: "name".to_string(),
-                        data_type: "TEXT".to_string(),
-                        nullable: false,
-                        is_primary_key: false,
-                    },
-                ],
-            },
-            TableInfo {
-                name: "orders".to_string(),
-                columns: vec![ColumnInfo {
-                    name: "id".to_string(),
-                    data_type: "INTEGER".to_string(),
-                    nullable: false,
-                    is_primary_key: true,
-                }],
-            },
-        ],
-        views: vec![],
+fn col(name: &str) -> ColumnInfo {
+    ColumnInfo {
+        name: name.to_string(),
+        data_type: "TEXT".to_string(),
+        nullable: true,
+        is_primary_key: false,
     }
 }
 
-// T16 #1: items() returns table names collapsed
+fn single_ns_schema() -> SchemaInfo {
+    SchemaInfo {
+        namespaces: vec![Namespace {
+            name: String::new(),
+            tables: vec![TableObject {
+                name: "users".to_string(),
+                columns: vec![col("id"), col("email")],
+            }],
+            views: vec![ViewObject {
+                name: "logs".to_string(),
+                columns: vec![col("id")],
+            }],
+            materialized_views: vec![],
+            indexes: vec![IndexObject {
+                name: "idx_email".to_string(),
+                table: "users".to_string(),
+                unique: true,
+            }],
+            triggers: vec![TriggerObject {
+                name: "trg".to_string(),
+                table: "users".to_string(),
+                event: "UPDATE".to_string(),
+            }],
+            functions: vec![],
+            procedures: vec![],
+            sequences: vec![],
+        }],
+    }
+}
+
+fn multi_ns_schema() -> SchemaInfo {
+    SchemaInfo {
+        namespaces: vec![Namespace::empty("public"), Namespace::empty("analytics")],
+    }
+}
+
 #[test]
-fn items_shows_collapsed_tables() {
-    let mut state = ExplorerState::new();
-    state.schema = Some(make_schema());
+fn single_namespace_hides_namespace_row() {
+    let mut state = ExplorerState::default();
+    state.set_schema(single_ns_schema());
 
     let items = state.items();
-    assert_eq!(items.len(), 2);
+    assert!(!matches!(items.first(), Some(TreeItem::Namespace { .. })));
+    assert!(matches!(
+        items.first(),
+        Some(TreeItem::Group {
+            kind: ObjectKind::Table,
+            ..
+        })
+    ));
+}
+
+#[test]
+fn multi_namespace_shows_namespace_rows() {
+    let mut state = ExplorerState::default();
+    state.set_schema(multi_ns_schema());
+
+    let items = state.items();
+    assert!(matches!(
+        &items[0],
+        TreeItem::Namespace { name, .. } if name == "public"
+    ));
+    assert!(matches!(
+        &items[1],
+        TreeItem::Namespace { name, .. } if name == "analytics"
+    ));
+}
+
+#[test]
+fn default_namespace_keeps_raw_empty_key() {
+    let mut state = ExplorerState::default();
+    state.set_schema(SchemaInfo {
+        namespaces: vec![Namespace::empty(""), Namespace::empty("other")],
+    });
+
+    let item = &state.items()[0];
+    assert!(matches!(item, TreeItem::Namespace { name, .. } if name.is_empty()));
+    assert_eq!(item.key(), Some(NodeKey::Namespace(String::new())));
+}
+
+#[test]
+fn default_namespace_renders_friendly_label() {
+    let mut app = common::test_app();
+    app.mode = Mode::Explorer;
+    app.focused_pane = FocusedPane::Explorer;
+    app.explorer_state.set_schema(SchemaInfo {
+        namespaces: vec![Namespace::empty(""), Namespace::empty("other")],
+    });
+
+    let backend = TestBackend::new(80, 24);
+    let mut terminal = Terminal::new(backend).unwrap();
+    terminal.draw(|frame| app.render(frame)).unwrap();
+    let buffer = terminal.backend().buffer();
+    let rendered = (0..buffer.area.height)
+        .map(|y| {
+            (0..buffer.area.width)
+                .map(|x| buffer[(x, y)].symbol())
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
     assert!(
-        matches!(&items[0], TreeItem::Table { name, expanded } if name == "users" && !expanded)
-    );
-    assert!(
-        matches!(&items[1], TreeItem::Table { name, expanded } if name == "orders" && !expanded)
+        rendered.contains("(default)"),
+        "rendered explorer: {rendered}"
     );
 }
 
-// T16 #2: toggle expands table, items shows columns
 #[test]
-fn toggle_expand_shows_columns() {
-    let mut state = ExplorerState::new();
-    state.schema = Some(make_schema());
-    state.toggle("users");
+fn empty_groups_are_hidden() {
+    let mut state = ExplorerState::default();
+    state.set_schema(single_ns_schema());
 
-    let items = state.items();
-    assert_eq!(items.len(), 4); // users + 2 cols + orders
-    assert!(
-        matches!(&items[0], TreeItem::Table { name, expanded } if name == "users" && *expanded)
-    );
-    assert!(matches!(&items[1], TreeItem::Column { name, .. } if name == "id"));
-    assert!(matches!(&items[2], TreeItem::Column { name, .. } if name == "name"));
-    assert!(matches!(&items[3], TreeItem::Table { name, .. } if name == "orders"));
+    for item in state.items() {
+        if let TreeItem::Group { kind, .. } = item {
+            assert!(!matches!(
+                kind,
+                ObjectKind::MaterializedView
+                    | ObjectKind::Function
+                    | ObjectKind::Procedure
+                    | ObjectKind::Sequence
+            ));
+        }
+    }
 }
 
-// T16 #3: toggle collapse hides columns
 #[test]
-fn toggle_collapse_hides_columns() {
-    let mut state = ExplorerState::new();
-    state.schema = Some(make_schema());
-    state.toggle("users");
-    state.toggle("users");
+fn group_header_count_matches_member_count() {
+    let mut state = ExplorerState::default();
+    state.set_schema(single_ns_schema());
 
-    let items = state.items();
-    assert_eq!(items.len(), 2);
-    assert!(matches!(&items[0], TreeItem::Table { expanded, .. } if !expanded));
+    assert!(matches!(
+        state.items().iter().find(|item| matches!(
+            item,
+            TreeItem::Group {
+                kind: ObjectKind::Table,
+                ..
+            }
+        )),
+        Some(TreeItem::Group { count: 1, .. })
+    ));
 }
 
-// T16 #4: move_down/move_up navigates selection
 #[test]
-fn move_down_up_navigates() {
-    let mut state = ExplorerState::new();
-    state.schema = Some(make_schema());
+fn expanding_table_reveals_columns() {
+    let mut state = ExplorerState::default();
+    state.set_schema(single_ns_schema());
+    state.toggle_key(NodeKey::Group {
+        ns: String::new(),
+        kind: ObjectKind::Table,
+    });
+    state.toggle_key(NodeKey::Object {
+        ns: String::new(),
+        kind: ObjectKind::Table,
+        name: "users".to_string(),
+    });
 
-    assert_eq!(state.selected, 0);
-    state.move_down();
-    assert_eq!(state.selected, 1);
-    state.move_down();
-    assert_eq!(state.selected, 1); // clamp at last item
+    let columns = state
+        .items()
+        .into_iter()
+        .filter(|item| matches!(item, TreeItem::Column { .. }))
+        .count();
+    assert_eq!(columns, 2);
+}
 
-    state.move_up();
-    assert_eq!(state.selected, 0);
-    state.move_up();
-    assert_eq!(state.selected, 0); // clamp at 0
+#[test]
+fn leaf_objects_have_no_toggle_key() {
+    let mut state = ExplorerState::default();
+    state.set_schema(single_ns_schema());
+    state.toggle_key(NodeKey::Group {
+        ns: String::new(),
+        kind: ObjectKind::Index,
+    });
+
+    let index = state
+        .items()
+        .into_iter()
+        .find(|item| {
+            matches!(
+                item,
+                TreeItem::Object {
+                    kind: ObjectKind::Index,
+                    ..
+                }
+            )
+        })
+        .unwrap();
+    assert_eq!(index.key(), None);
 }
 
 fn make_explorer_app() -> App {
     let mut app = common::test_app();
     app.mode = Mode::Explorer;
     app.focused_pane = FocusedPane::Explorer;
-    app.explorer_state.schema = Some(make_schema());
+    app.explorer_state.set_schema(single_ns_schema());
     app
 }
 
-// T16 #5: Enter toggles expand on selected table
-#[test]
-fn enter_toggles_expand() {
-    let mut app = make_explorer_app();
-
+fn enter(app: &mut App) {
     let key = crossterm::event::KeyEvent::new(
         crossterm::event::KeyCode::Enter,
         crossterm::event::KeyModifiers::NONE,
     );
     let mode = app.mode;
-    mode.handle_key(key, &mut app);
-
-    let items = app.explorer_state.items();
-    assert_eq!(items.len(), 4); // users expanded (2 cols) + orders
+    mode.handle_key(key, app);
 }
 
-// T25 #1: initial scroll offset is 0, default visible_rows > 0
+#[test]
+fn enter_toggles_group_and_expandable_object() {
+    let mut app = make_explorer_app();
+
+    enter(&mut app);
+    assert!(matches!(
+        &app.explorer_state.items()[0],
+        TreeItem::Group {
+            kind: ObjectKind::Table,
+            expanded: true,
+            ..
+        }
+    ));
+
+    app.explorer_state.move_down();
+    enter(&mut app);
+    assert_eq!(
+        app.explorer_state
+            .items()
+            .iter()
+            .filter(|item| matches!(item, TreeItem::Column { .. }))
+            .count(),
+        2
+    );
+}
+
+#[test]
+fn enter_on_leaf_object_does_nothing() {
+    let mut app = make_explorer_app();
+    app.explorer_state.toggle_key(NodeKey::Group {
+        ns: String::new(),
+        kind: ObjectKind::Index,
+    });
+    app.explorer_state.selected = app
+        .explorer_state
+        .items()
+        .iter()
+        .position(|item| {
+            matches!(
+                item,
+                TreeItem::Object {
+                    kind: ObjectKind::Index,
+                    ..
+                }
+            )
+        })
+        .unwrap();
+    let before = app.explorer_state.expanded.clone();
+
+    enter(&mut app);
+
+    assert_eq!(app.explorer_state.expanded, before);
+}
+
+#[test]
+fn move_down_up_navigates_visible_items() {
+    let mut state = ExplorerState::default();
+    state.set_schema(single_ns_schema());
+    let last = state.items().len() - 1;
+
+    for _ in 0..state.items().len() + 2 {
+        state.move_down();
+    }
+    assert_eq!(state.selected, last);
+    for _ in 0..state.items().len() + 2 {
+        state.move_up();
+    }
+    assert_eq!(state.selected, 0);
+}
+
 #[test]
 fn scroll_default_zero() {
     let state = ExplorerState::new();
@@ -136,33 +304,40 @@ fn scroll_default_zero() {
 }
 
 fn large_schema(n: usize) -> SchemaInfo {
+    let mut namespace = Namespace::empty("");
+    namespace.tables = (0..n)
+        .map(|i| TableObject {
+            name: format!("t{i}"),
+            columns: vec![],
+        })
+        .collect();
     SchemaInfo {
-        tables: (0..n)
-            .map(|i| TableInfo {
-                name: format!("t{}", i),
-                columns: vec![],
-            })
-            .collect(),
-        views: vec![],
+        namespaces: vec![namespace],
     }
 }
 
-// T25 #2: move_down past viewport scrolls offset forward
+fn large_state(n: usize) -> ExplorerState {
+    let mut state = ExplorerState::new();
+    state.set_schema(large_schema(n));
+    state.toggle_key(NodeKey::Group {
+        ns: String::new(),
+        kind: ObjectKind::Table,
+    });
+    state
+}
+
 #[test]
 fn scroll_advances_past_viewport() {
-    let mut state = ExplorerState::new();
-    state.schema = Some(large_schema(30));
+    let mut state = large_state(30);
     state.visible_rows = 10;
 
     for _ in 0..9 {
         state.move_down();
     }
-    // selected = 9 (last visible row), still within viewport
     assert_eq!(state.selected, 9);
     assert_eq!(state.scroll_offset, 0);
 
     state.move_down();
-    // selected = 10, scroll forward by 1
     assert_eq!(state.selected, 10);
     assert_eq!(state.scroll_offset, 1);
 
@@ -171,42 +346,35 @@ fn scroll_advances_past_viewport() {
     assert_eq!(state.scroll_offset, 2);
 }
 
-// T25 #3: move_up back into viewport keeps scroll, going above scrolls back
 #[test]
 fn scroll_reverses_on_move_up() {
-    let mut state = ExplorerState::new();
-    state.schema = Some(large_schema(30));
+    let mut state = large_state(30);
     state.visible_rows = 10;
 
     for _ in 0..15 {
         state.move_down();
     }
     assert_eq!(state.selected, 15);
-    assert_eq!(state.scroll_offset, 6); // 15 - 10 + 1
+    assert_eq!(state.scroll_offset, 6);
 
-    // move up within viewport — no scroll change
     state.move_up();
     assert_eq!(state.selected, 14);
     assert_eq!(state.scroll_offset, 6);
 
-    // move up to top of viewport
     for _ in 0..8 {
         state.move_up();
     }
     assert_eq!(state.selected, 6);
     assert_eq!(state.scroll_offset, 6);
 
-    // one more — scroll up
     state.move_up();
     assert_eq!(state.selected, 5);
     assert_eq!(state.scroll_offset, 5);
 }
 
-// T25 #4: adjust_scroll clamps when selection drops below viewport (e.g., collapse)
 #[test]
 fn adjust_scroll_clamps_after_external_selection_change() {
-    let mut state = ExplorerState::new();
-    state.schema = Some(large_schema(30));
+    let mut state = large_state(30);
     state.visible_rows = 10;
     state.scroll_offset = 15;
     state.selected = 3;
@@ -215,47 +383,39 @@ fn adjust_scroll_clamps_after_external_selection_change() {
     assert_eq!(state.scroll_offset, 3);
 }
 
-// T25 #5: zero visible_rows does not panic
 #[test]
 fn adjust_scroll_zero_viewport_no_panic() {
-    let mut state = ExplorerState::new();
-    state.schema = Some(large_schema(5));
+    let mut state = large_state(5);
     state.visible_rows = 0;
     state.selected = 2;
     state.adjust_scroll();
     assert_eq!(state.scroll_offset, 2);
 }
 
-// T25 #6: adjust_scroll clamps scroll_offset to max_scroll (len - visible_rows)
 #[test]
 fn adjust_scroll_clamps_to_max_scroll() {
-    let mut state = ExplorerState::new();
-    state.schema = Some(large_schema(30));
+    let mut state = large_state(30);
     state.visible_rows = 10;
-    state.scroll_offset = 25; // past max_scroll = 30 - 10 = 20
+    state.scroll_offset = 25;
     state.selected = 22;
     state.adjust_scroll();
-    assert!(state.scroll_offset <= 20);
+    assert!(state.scroll_offset <= 21);
 }
 
-// T25 #7: set_viewport clamps selected when item count shrinks below it
 #[test]
 fn set_viewport_clamps_selected_on_shrink() {
-    let mut state = ExplorerState::new();
-    state.schema = Some(large_schema(30));
+    let mut state = large_state(30);
     state.visible_rows = 10;
     state.selected = 25;
     state.adjust_scroll();
 
-    // Schema shrinks to 5 items (e.g., reload)
     state.schema = Some(large_schema(5));
     state.set_viewport(10);
 
-    assert_eq!(state.selected, 4); // clamped to len - 1
-    assert_eq!(state.scroll_offset, 0); // len <= visible_rows
+    assert_eq!(state.selected, 5);
+    assert_eq!(state.scroll_offset, 0);
 }
 
-// T25 #8: set_viewport on empty schema resets selected and scroll_offset
 #[test]
 fn set_viewport_empty_resets_state() {
     let mut state = ExplorerState::new();
@@ -266,14 +426,12 @@ fn set_viewport_empty_resets_state() {
     assert_eq!(state.scroll_offset, 0);
 }
 
-// T25 #9: adjust_scroll with usize::MAX scroll_offset does not overflow
 #[test]
 fn adjust_scroll_saturates_on_overflow() {
-    let mut state = ExplorerState::new();
-    state.schema = Some(large_schema(30));
+    let mut state = large_state(30);
     state.visible_rows = 10;
     state.scroll_offset = usize::MAX;
     state.selected = 5;
-    state.adjust_scroll(); // must not panic
-    assert!(state.scroll_offset <= 20);
+    state.adjust_scroll();
+    assert!(state.scroll_offset <= 21);
 }

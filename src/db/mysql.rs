@@ -5,7 +5,10 @@ use async_trait::async_trait;
 use sqlx::mysql::{MySqlConnection, MySqlPoolOptions};
 use sqlx::{ConnectOptions, Connection, Row, TypeInfo, ValueRef};
 
-use super::types::{sqlx_result_columns, ColumnInfo, QueryResult, SchemaInfo, TableInfo, Value};
+use super::types::{
+    sqlx_result_columns, ColumnInfo, IndexObject, Namespace, QueryResult, RoutineObject,
+    SchemaInfo, TableObject, TriggerObject, Value, ViewObject,
+};
 use super::Database;
 
 fn mysql_row_to_value(row: &sqlx::mysql::MySqlRow, i: usize) -> Value {
@@ -79,6 +82,87 @@ impl MySqlAdapter {
             exec_conn_id: Arc::new(AtomicU64::new(0)),
             in_tx: Arc::new(AtomicBool::new(false)),
         }
+    }
+
+    async fn current_database_mysql(&self) -> anyhow::Result<String> {
+        let pool = self
+            .pool
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("not connected"))?;
+        let (database,): (Option<String>,) =
+            sqlx::query_as("SELECT DATABASE()").fetch_one(pool).await?;
+        database.ok_or_else(|| anyhow::anyhow!("no database selected"))
+    }
+
+    async fn list_indexes_mysql(&self, schema: &str) -> anyhow::Result<Vec<IndexObject>> {
+        let pool = self
+            .pool
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("not connected"))?;
+        let rows = sqlx::query_as::<_, (String, String, i64)>(
+            "SELECT CAST(index_name AS CHAR), CAST(table_name AS CHAR), MIN(non_unique)
+             FROM information_schema.statistics
+             WHERE table_schema = ?
+             GROUP BY index_name, table_name
+             ORDER BY index_name",
+        )
+        .bind(schema)
+        .fetch_all(pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|(name, table, non_unique)| IndexObject {
+                name,
+                table,
+                unique: non_unique == 0,
+            })
+            .collect())
+    }
+
+    async fn list_triggers_mysql(&self, schema: &str) -> anyhow::Result<Vec<TriggerObject>> {
+        let pool = self
+            .pool
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("not connected"))?;
+        let rows = sqlx::query_as::<_, (String, String, String)>(
+            "SELECT CAST(trigger_name AS CHAR), CAST(event_object_table AS CHAR),
+                    CAST(event_manipulation AS CHAR)
+             FROM information_schema.triggers
+             WHERE trigger_schema = ?
+             ORDER BY trigger_name",
+        )
+        .bind(schema)
+        .fetch_all(pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|(name, table, event)| TriggerObject { name, table, event })
+            .collect())
+    }
+
+    async fn list_routines_mysql(
+        &self,
+        schema: &str,
+        routine_type: &str,
+    ) -> anyhow::Result<Vec<RoutineObject>> {
+        let pool = self
+            .pool
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("not connected"))?;
+        let rows = sqlx::query_as::<_, (String, Option<String>)>(
+            "SELECT CAST(routine_name AS CHAR), CAST(data_type AS CHAR)
+             FROM information_schema.routines
+             WHERE routine_schema = ? AND routine_type = ?
+             ORDER BY routine_name",
+        )
+        .bind(schema)
+        .bind(routine_type)
+        .fetch_all(pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|(name, return_type)| RoutineObject { name, return_type })
+            .collect())
     }
 }
 
@@ -170,21 +254,11 @@ impl Database for MySqlAdapter {
                 rows_affected: Some(count),
                 total_count: None,
             })
-        } else if tx_transition.is_some() {
-            // sqlx-mysql can't run BEGIN/START TRANSACTION/COMMIT/ROLLBACK
-            // via the prepared-statement protocol — the server rejects them
-            // with 1295 "not supported in the prepared statement protocol".
-            // Route through the text protocol via `Executor::execute`.
+        } else {
+            // MySQL rejects some valid statements (including transaction and
+            // stored-routine DDL) through the prepared-statement protocol.
             use sqlx::Executor;
             let stmt = conn.execute(sqlx::raw_sql(query)).await?;
-            Ok(QueryResult {
-                columns: vec![],
-                rows: vec![],
-                rows_affected: Some(stmt.rows_affected()),
-                total_count: None,
-            })
-        } else {
-            let stmt = sqlx::query(query).execute(&mut *conn).await?;
             Ok(QueryResult {
                 columns: vec![],
                 rows: vec![],
@@ -308,27 +382,37 @@ impl Database for MySqlAdapter {
     }
 
     async fn schema_info(&self) -> anyhow::Result<SchemaInfo> {
-        let tables = self.list_tables().await?;
-        let views = self.list_views().await?;
-        let mut table_infos = Vec::new();
-        for name in &tables {
+        let schema = self.current_database_mysql().await?;
+        let table_names = self.list_tables().await?;
+        let view_names = self.list_views().await?;
+        let mut tables = Vec::with_capacity(table_names.len());
+        for name in &table_names {
             let columns = self.list_columns(name).await?;
-            table_infos.push(TableInfo {
+            tables.push(TableObject {
                 name: name.clone(),
                 columns,
             });
         }
-        let mut view_infos = Vec::new();
-        for name in &views {
+        let mut views = Vec::with_capacity(view_names.len());
+        for name in &view_names {
             let columns = self.list_columns(name).await?;
-            view_infos.push(super::types::ViewInfo {
+            views.push(ViewObject {
                 name: name.clone(),
                 columns,
             });
         }
         Ok(SchemaInfo {
-            tables: table_infos,
-            views: view_infos,
+            namespaces: vec![Namespace {
+                name: schema.clone(),
+                tables,
+                views,
+                materialized_views: vec![],
+                indexes: self.list_indexes_mysql(&schema).await?,
+                triggers: self.list_triggers_mysql(&schema).await?,
+                functions: self.list_routines_mysql(&schema, "FUNCTION").await?,
+                procedures: self.list_routines_mysql(&schema, "PROCEDURE").await?,
+                sequences: vec![],
+            }],
         })
     }
 

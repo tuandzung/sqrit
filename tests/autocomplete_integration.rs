@@ -184,17 +184,18 @@ fn tab_accept_empty_prefix_inserts_word() {
 #[test]
 fn tick_autocomplete_uses_schema_for_suggestions() {
     let mut app = make_insert_app_with_editor();
-    app.explorer_state.schema = Some(sqrit::db::types::SchemaInfo {
-        tables: vec![sqrit::db::types::TableInfo {
-            name: "users".into(),
-            columns: vec![sqrit::db::types::ColumnInfo {
-                name: "email".into(),
-                data_type: "TEXT".into(),
-                nullable: false,
-                is_primary_key: false,
-            }],
+    let mut namespace = sqrit::db::types::Namespace::empty("");
+    namespace.tables.push(sqrit::db::types::TableObject {
+        name: "users".into(),
+        columns: vec![sqrit::db::types::ColumnInfo {
+            name: "email".into(),
+            data_type: "TEXT".into(),
+            nullable: false,
+            is_primary_key: false,
         }],
-        views: vec![],
+    });
+    app.explorer_state.schema = Some(sqrit::db::types::SchemaInfo {
+        namespaces: vec![namespace],
     });
 
     // Type "em" — should match "email" column

@@ -5,7 +5,10 @@ use async_trait::async_trait;
 use sqlx::postgres::{PgConnection, PgPoolOptions};
 use sqlx::{ConnectOptions, Connection, Row, TypeInfo, ValueRef};
 
-use super::types::{sqlx_result_columns, ColumnInfo, QueryResult, SchemaInfo, TableInfo, Value};
+use super::types::{
+    sqlx_result_columns, ColumnInfo, IndexObject, Namespace, QueryResult, RoutineObject,
+    SchemaInfo, SequenceObject, TableObject, TriggerObject, Value, ViewObject,
+};
 use super::Database;
 
 fn pg_row_to_value(row: &sqlx::postgres::PgRow, i: usize) -> Value {
@@ -67,6 +70,201 @@ impl PgAdapter {
             exec_conn: Arc::new(tokio::sync::Mutex::new(None)),
             exec_pid: Arc::new(AtomicU64::new(0)),
         }
+    }
+
+    async fn list_user_schemas_pg(&self) -> anyhow::Result<Vec<String>> {
+        let pool = self
+            .pool
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("not connected"))?;
+        let rows = sqlx::query_as::<_, (String,)>(
+            "SELECT nspname FROM pg_namespace
+             WHERE nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+               AND nspname NOT LIKE 'pg_temp_%'
+               AND nspname NOT LIKE 'pg_toast_temp_%'
+             ORDER BY nspname",
+        )
+        .fetch_all(pool)
+        .await?;
+        Ok(rows.into_iter().map(|(name,)| name).collect())
+    }
+
+    async fn list_tables_in_schema_pg(&self, schema: &str) -> anyhow::Result<Vec<String>> {
+        let pool = self
+            .pool
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("not connected"))?;
+        let rows = sqlx::query_as::<_, (String,)>(
+            "SELECT tablename FROM pg_tables WHERE schemaname = $1 ORDER BY tablename",
+        )
+        .bind(schema)
+        .fetch_all(pool)
+        .await?;
+        Ok(rows.into_iter().map(|(name,)| name).collect())
+    }
+
+    async fn list_views_in_schema_pg(&self, schema: &str) -> anyhow::Result<Vec<String>> {
+        let pool = self
+            .pool
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("not connected"))?;
+        let rows = sqlx::query_as::<_, (String,)>(
+            "SELECT viewname FROM pg_views WHERE schemaname = $1 ORDER BY viewname",
+        )
+        .bind(schema)
+        .fetch_all(pool)
+        .await?;
+        Ok(rows.into_iter().map(|(name,)| name).collect())
+    }
+
+    async fn list_matviews_in_schema_pg(&self, schema: &str) -> anyhow::Result<Vec<String>> {
+        let pool = self
+            .pool
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("not connected"))?;
+        let rows = sqlx::query_as::<_, (String,)>(
+            "SELECT matviewname FROM pg_matviews WHERE schemaname = $1 ORDER BY matviewname",
+        )
+        .bind(schema)
+        .fetch_all(pool)
+        .await?;
+        Ok(rows.into_iter().map(|(name,)| name).collect())
+    }
+
+    async fn list_indexes_in_schema_pg(&self, schema: &str) -> anyhow::Result<Vec<IndexObject>> {
+        let pool = self
+            .pool
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("not connected"))?;
+        let rows = sqlx::query_as::<_, (String, String, bool)>(
+            "SELECT index_class.relname, table_class.relname, idx.indisunique
+             FROM pg_index idx
+             JOIN pg_class index_class ON index_class.oid = idx.indexrelid
+             JOIN pg_class table_class ON table_class.oid = idx.indrelid
+             JOIN pg_namespace table_ns ON table_ns.oid = table_class.relnamespace
+             WHERE table_ns.nspname = $1
+             ORDER BY index_class.relname",
+        )
+        .bind(schema)
+        .fetch_all(pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|(name, table, unique)| IndexObject {
+                name,
+                table,
+                unique,
+            })
+            .collect())
+    }
+
+    async fn list_triggers_in_schema_pg(&self, schema: &str) -> anyhow::Result<Vec<TriggerObject>> {
+        let pool = self
+            .pool
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("not connected"))?;
+        let rows = sqlx::query_as::<_, (String, String, String)>(
+            "SELECT trigger_name, event_object_table,
+                    string_agg(event_manipulation, ', ' ORDER BY event_manipulation)
+             FROM information_schema.triggers
+             WHERE trigger_schema = $1
+             GROUP BY trigger_name, event_object_table
+             ORDER BY trigger_name",
+        )
+        .bind(schema)
+        .fetch_all(pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|(name, table, event)| TriggerObject { name, table, event })
+            .collect())
+    }
+
+    async fn list_routines_in_schema_pg(
+        &self,
+        schema: &str,
+        prokind: char,
+    ) -> anyhow::Result<Vec<RoutineObject>> {
+        let pool = self
+            .pool
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("not connected"))?;
+        let rows = sqlx::query_as::<_, (String, Option<String>)>(
+            "SELECT p.proname, pg_catalog.format_type(p.prorettype, NULL)
+             FROM pg_proc p
+             JOIN pg_namespace n ON n.oid = p.pronamespace
+             WHERE n.nspname = $1 AND p.prokind = $2::\"char\"
+             ORDER BY p.proname",
+        )
+        .bind(schema)
+        .bind(prokind.to_string())
+        .fetch_all(pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|(name, return_type)| RoutineObject { name, return_type })
+            .collect())
+    }
+
+    async fn list_sequences_in_schema_pg(
+        &self,
+        schema: &str,
+    ) -> anyhow::Result<Vec<SequenceObject>> {
+        let pool = self
+            .pool
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("not connected"))?;
+        let rows = sqlx::query_as::<_, (String, Option<i64>)>(
+            "SELECT sequencename, last_value
+             FROM pg_sequences
+             WHERE schemaname = $1
+             ORDER BY sequencename",
+        )
+        .bind(schema)
+        .fetch_all(pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|(name, last_value)| SequenceObject { name, last_value })
+            .collect())
+    }
+
+    async fn list_columns_qualified_pg(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> anyhow::Result<Vec<ColumnInfo>> {
+        let pool = self
+            .pool
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("not connected"))?;
+        let rows = sqlx::query_as::<_, (String, String, bool, bool)>(
+            "SELECT column_name, data_type, is_nullable = 'YES', EXISTS (
+                SELECT 1 FROM information_schema.table_constraints tc
+                JOIN information_schema.key_column_usage kcu
+                  ON tc.constraint_name = kcu.constraint_name
+                 AND tc.table_schema = kcu.table_schema
+                WHERE tc.table_name = $2 AND tc.table_schema = $1
+                  AND tc.constraint_type = 'PRIMARY KEY'
+                  AND kcu.column_name = c.column_name
+            )
+             FROM information_schema.columns c
+             WHERE table_schema = $1 AND table_name = $2
+             ORDER BY ordinal_position",
+        )
+        .bind(schema)
+        .bind(table)
+        .fetch_all(pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|(name, data_type, nullable, is_primary_key)| ColumnInfo {
+                name,
+                data_type,
+                nullable,
+                is_primary_key,
+            })
+            .collect())
     }
 }
 
@@ -261,28 +459,48 @@ impl Database for PgAdapter {
     }
 
     async fn schema_info(&self) -> anyhow::Result<SchemaInfo> {
-        let tables = self.list_tables().await?;
-        let views = self.list_views().await?;
-        let mut table_infos = Vec::new();
-        for name in &tables {
-            let columns = self.list_columns(name).await?;
-            table_infos.push(TableInfo {
-                name: name.clone(),
-                columns,
+        let schemas = self.list_user_schemas_pg().await?;
+        let mut namespaces = Vec::with_capacity(schemas.len());
+        for schema in schemas {
+            let table_names = self.list_tables_in_schema_pg(&schema).await?;
+            let view_names = self.list_views_in_schema_pg(&schema).await?;
+            let materialized_view_names = self.list_matviews_in_schema_pg(&schema).await?;
+
+            let mut tables = Vec::with_capacity(table_names.len());
+            for name in table_names {
+                tables.push(TableObject {
+                    columns: self.list_columns_qualified_pg(&schema, &name).await?,
+                    name,
+                });
+            }
+            let mut views = Vec::with_capacity(view_names.len());
+            for name in view_names {
+                views.push(ViewObject {
+                    columns: self.list_columns_qualified_pg(&schema, &name).await?,
+                    name,
+                });
+            }
+            let mut materialized_views = Vec::with_capacity(materialized_view_names.len());
+            for name in materialized_view_names {
+                materialized_views.push(ViewObject {
+                    columns: self.list_columns_qualified_pg(&schema, &name).await?,
+                    name,
+                });
+            }
+
+            namespaces.push(Namespace {
+                tables,
+                views,
+                materialized_views,
+                indexes: self.list_indexes_in_schema_pg(&schema).await?,
+                triggers: self.list_triggers_in_schema_pg(&schema).await?,
+                functions: self.list_routines_in_schema_pg(&schema, 'f').await?,
+                procedures: self.list_routines_in_schema_pg(&schema, 'p').await?,
+                sequences: self.list_sequences_in_schema_pg(&schema).await?,
+                name: schema,
             });
         }
-        let mut view_infos = Vec::new();
-        for name in &views {
-            let columns = self.list_columns(name).await?;
-            view_infos.push(super::types::ViewInfo {
-                name: name.clone(),
-                columns,
-            });
-        }
-        Ok(SchemaInfo {
-            tables: table_infos,
-            views: view_infos,
-        })
+        Ok(SchemaInfo { namespaces })
     }
 
     fn clone_box(&self) -> Box<dyn Database> {

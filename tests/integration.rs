@@ -232,7 +232,11 @@ async fn all_adapters_schema_info() {
         .unwrap();
 
         let info = db.schema_info().await.unwrap();
-        assert!(info.tables.iter().any(|t| t.name == table));
+        assert!(info
+            .namespaces
+            .iter()
+            .flat_map(|namespace| &namespace.tables)
+            .any(|candidate| candidate.name == table));
     })
     .await;
 }

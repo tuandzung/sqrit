@@ -2,7 +2,10 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use super::types::{ColumnInfo, QueryResult, ResultColumn, SchemaInfo, TableInfo, Value};
+use super::types::{
+    ColumnInfo, IndexObject, Namespace, QueryResult, ResultColumn, SchemaInfo, TableObject,
+    TriggerObject, Value, ViewObject,
+};
 use super::Database;
 
 pub struct SqliteAdapter {
@@ -22,6 +25,73 @@ impl SqliteAdapter {
             conn: None,
             interrupt: None,
         }
+    }
+
+    async fn list_indexes_sqlite(&self) -> anyhow::Result<Vec<IndexObject>> {
+        let result = self
+            .execute(
+                "SELECT name, tbl_name, sql FROM sqlite_master
+                 WHERE type = 'index' AND name NOT LIKE 'sqlite_%'
+                 ORDER BY name",
+            )
+            .await?;
+        Ok(result
+            .rows
+            .iter()
+            .filter_map(|row| {
+                let name = match row.get("name") {
+                    Some(Value::Text(name)) => name.clone(),
+                    _ => return None,
+                };
+                let table = match row.get("tbl_name") {
+                    Some(Value::Text(table)) => table.clone(),
+                    _ => return None,
+                };
+                let sql = match row.get("sql") {
+                    Some(Value::Text(sql)) => sql.as_str(),
+                    _ => "",
+                };
+                Some(IndexObject {
+                    name,
+                    table,
+                    unique: sql.to_uppercase().contains("UNIQUE"),
+                })
+            })
+            .collect())
+    }
+
+    async fn list_triggers_sqlite(&self) -> anyhow::Result<Vec<TriggerObject>> {
+        let result = self
+            .execute(
+                "SELECT name, tbl_name, sql FROM sqlite_master
+                 WHERE type = 'trigger'
+                 ORDER BY name",
+            )
+            .await?;
+        Ok(result
+            .rows
+            .iter()
+            .filter_map(|row| {
+                let name = match row.get("name") {
+                    Some(Value::Text(name)) => name.clone(),
+                    _ => return None,
+                };
+                let table = match row.get("tbl_name") {
+                    Some(Value::Text(table)) => table.clone(),
+                    _ => return None,
+                };
+                let sql = match row.get("sql") {
+                    Some(Value::Text(sql)) => sql.to_uppercase(),
+                    _ => String::new(),
+                };
+                let event = ["INSERT", "UPDATE", "DELETE"]
+                    .into_iter()
+                    .find(|event| sql.split_whitespace().any(|word| word == *event))
+                    .unwrap_or("")
+                    .to_string();
+                Some(TriggerObject { name, table, event })
+            })
+            .collect())
     }
 }
 
@@ -188,27 +258,36 @@ impl Database for SqliteAdapter {
     }
 
     async fn schema_info(&self) -> anyhow::Result<SchemaInfo> {
-        let tables = self.list_tables().await?;
-        let views = self.list_views().await?;
-        let mut table_infos = Vec::new();
-        for name in &tables {
+        let table_names = self.list_tables().await?;
+        let view_names = self.list_views().await?;
+        let mut tables = Vec::new();
+        for name in &table_names {
             let columns = self.list_columns(name).await?;
-            table_infos.push(TableInfo {
+            tables.push(TableObject {
                 name: name.clone(),
                 columns,
             });
         }
-        let mut view_infos = Vec::new();
-        for name in &views {
+        let mut views = Vec::new();
+        for name in &view_names {
             let columns = self.list_columns(name).await?;
-            view_infos.push(super::types::ViewInfo {
+            views.push(ViewObject {
                 name: name.clone(),
                 columns,
             });
         }
         Ok(SchemaInfo {
-            tables: table_infos,
-            views: view_infos,
+            namespaces: vec![Namespace {
+                name: String::new(),
+                tables,
+                views,
+                materialized_views: vec![],
+                indexes: self.list_indexes_sqlite().await?,
+                triggers: self.list_triggers_sqlite().await?,
+                functions: vec![],
+                procedures: vec![],
+                sequences: vec![],
+            }],
         })
     }
 

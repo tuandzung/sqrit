@@ -244,11 +244,16 @@ async fn schema_info_returns_tables_and_views() {
         .unwrap();
 
     let info = adapter.schema_info().await.unwrap();
-    assert!(info.tables.iter().any(|t| t.name == table));
-    let t = info.tables.iter().find(|t| t.name == table).unwrap();
+    let namespace = info
+        .namespaces
+        .iter()
+        .find(|namespace| namespace.name == "public")
+        .unwrap();
+    assert!(namespace.tables.iter().any(|t| t.name == table));
+    let t = namespace.tables.iter().find(|t| t.name == table).unwrap();
     assert_eq!(t.columns.len(), 3);
-    assert!(info.views.iter().any(|v| v.name == view));
-    let v = info.views.iter().find(|v| v.name == view).unwrap();
+    assert!(namespace.views.iter().any(|v| v.name == view));
+    let v = namespace.views.iter().find(|v| v.name == view).unwrap();
     assert_eq!(v.columns.len(), 2);
 }
 

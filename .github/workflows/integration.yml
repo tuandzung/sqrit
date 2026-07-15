@@ -50,4 +50,4 @@ jobs:
         run: cargo build --locked
 
       - name: Run adapter tests (including ignored)
-        run: cargo test --locked --test pg_adapter --test mysql_adapter -- --include-ignored
+        run: cargo test --locked --test pg_adapter --test schema_pg --test mysql_adapter --test schema_mysql -- --include-ignored
