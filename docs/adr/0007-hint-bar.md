@@ -11,8 +11,8 @@ Since v0.2, `?` opens a help overlay that lists the active mode's keybindings. T
 
 Add one reserved row directly above the status bar for mode-aware keybinding hints.
 
-- **Layout (Section B from brainstorming):** Add a row above the status bar instead of replacing it. The status bar keeps its full width for error messages.
-- **Content (Section C from brainstorming):** Left-justify mode bindings from `ModeHandler::bindings()`. Right-justify the constant palette suffix `<sp> cmd  ? help`, with a separator pipe between the two groups.
+- **Layout (Section B from brainstorming):** Add a row above the status bar instead of replacing it. The status bar keeps its full width for error messages. At terminal heights below two rows, suppress the hint so status keeps the available row.
+- **Content (Section C from brainstorming):** Left-justify every mode's bindings from `ModeHandler::bindings()`. Right-justify `<sp> cmd  ? help`, with a separator pipe between the two groups, only in `QueryNormal`, `Explorer`, and `Results`, where both shortcuts are active.
 - **Toggleable:** Add `[hint_bar].enabled` to `~/.sqrit/config.toml` with a default of `true`, plus `auto_hide_narrow` for very small terminals.
 - **Theme integration:** Add optional `hint_bar_*` keys to each theme TOML `[colors]` table. Missing fields fall back individually: `hint_bar_bg` to `bg`, `hint_bar_fg` to `fg`, `hint_bar_key` to `border_focused`, and `hint_bar_separator` to `border_unfocused`.
 
@@ -23,7 +23,7 @@ Add one reserved row directly above the status bar for mode-aware keybinding hin
 
 ## Consequences
 
-- **Invariant V10:** Hint bar bindings come only from `ModeHandler::bindings()`, never inline strings. The help overlay uses the same source, so the two cannot drift.
+- **Invariant V10:** Hint bar bindings come only from `ModeHandler::bindings()`, never inline strings. The help overlay uses the same source. `Mode::supports_global_shortcuts()` controls both global help routing and suffix visibility.
 - Every new mode handler must order `bindings()` from most to least important; PR review catches violations.
-- The hint bar reserves one terminal row, or zero when disabled or auto-hidden on narrow terminals.
+- The hint bar reserves one terminal row, or zero when disabled, auto-hidden on narrow terminals, or the terminal has fewer than two rows.
 - The theme schema remains forward-additive: pre-v0.3.1 user TOMLs without the `hint_bar_*` keys render correctly through per-field fallback.

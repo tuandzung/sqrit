@@ -10,7 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- Hint bar: single-row, mode-aware keybinding hints above the status bar. The left side lists the active mode's top bindings from `ModeHandler::bindings()`; the right side shows `<sp> cmd  ? help`. Hints truncate gracefully on narrow terminals.
+- Hint bar: single-row, mode-aware keybinding hints above the status bar. Every mode, including Picker and transient modes, lists its top bindings from `ModeHandler::bindings()` on the left. `QueryNormal`, `Explorer`, and `Results` show `<sp> cmd  ? help` on the right, where both shortcuts are active. The status bar takes priority on a one-row terminal.
 - `[hint_bar]` config section in `~/.sqrit/config.toml` (`enabled`, `auto_hide_narrow`).
 - Optional `[colors].hint_bar_bg`, `[colors].hint_bar_fg`, `[colors].hint_bar_key`, and `[colors].hint_bar_separator` theme keys. Missing keys fall back to existing palette colors. All five bundled themes (Rose Pine, Tokyo Night, Nord, Gruvbox, and Catppuccin Macchiato) define them.
 - ADR 7: hint bar layout.

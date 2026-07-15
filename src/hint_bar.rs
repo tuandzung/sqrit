@@ -18,7 +18,12 @@ pub struct Layout {
     pub gap: u16,
 }
 
-pub fn compose(bindings: &[KeyBinding], theme: &Theme, width: u16) -> Layout {
+pub fn compose(
+    bindings: &[KeyBinding],
+    show_global_suffix: bool,
+    theme: &Theme,
+    width: u16,
+) -> Layout {
     if width < MIN_WIDTH {
         return Layout {
             left: vec![],
@@ -33,13 +38,25 @@ pub fn compose(bindings: &[KeyBinding], theme: &Theme, width: u16) -> Layout {
     let body_style = Style::default().fg(theme.hint_bar_fg);
     let separator_style = Style::default().fg(theme.hint_bar_separator);
     let width = usize::from(width);
-    let suffix_width = PALETTE_SUFFIX.chars().count();
+    let suffix_width = if show_global_suffix {
+        PALETTE_SUFFIX.chars().count()
+    } else {
+        0
+    };
 
     if bindings.is_empty() {
         return Layout {
             left: vec![],
-            right: vec![Span::styled(PALETTE_SUFFIX.to_owned(), body_style)],
-            gap: (width - suffix_width) as u16,
+            right: if show_global_suffix {
+                vec![Span::styled(PALETTE_SUFFIX.to_owned(), body_style)]
+            } else {
+                vec![]
+            },
+            gap: if show_global_suffix {
+                (width - suffix_width) as u16
+            } else {
+                0
+            },
         };
     }
 
@@ -56,7 +73,7 @@ pub fn compose(bindings: &[KeyBinding], theme: &Theme, width: u16) -> Layout {
 
     let bindings = &bindings[..take];
     let left_width = render_left_text(bindings).chars().count();
-    let with_suffix = left_width + 3 + suffix_width <= width;
+    let with_suffix = show_global_suffix && left_width + 3 + suffix_width <= width;
 
     Layout {
         left: spans_for_bindings(bindings, key_style, body_style),
@@ -101,12 +118,18 @@ fn spans_for_bindings(
     spans
 }
 
-pub fn render(frame: &mut Frame, area: Rect, bindings: &[KeyBinding], theme: &Theme) {
+pub fn render(
+    frame: &mut Frame,
+    area: Rect,
+    bindings: &[KeyBinding],
+    show_global_suffix: bool,
+    theme: &Theme,
+) {
     if area.width == 0 || area.height == 0 {
         return;
     }
 
-    let layout = compose(bindings, theme, area.width);
+    let layout = compose(bindings, show_global_suffix, theme, area.width);
     let mut spans = layout.left;
     if !layout.right.is_empty() {
         if layout.gap > 0 {

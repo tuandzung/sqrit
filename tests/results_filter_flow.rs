@@ -125,6 +125,22 @@ fn typing_in_filter_mode_live_filters_visible_rows() {
 }
 
 #[test]
+fn global_shortcut_keys_remain_literal_in_filter_mode() {
+    let mut app = common::test_app();
+    seed_three_rows(&mut app);
+
+    press(
+        &mut app,
+        &[KeyCode::Char('/'), KeyCode::Char('?'), KeyCode::Char(' ')],
+    );
+
+    assert_eq!(app.mode, Mode::ResultsFilter);
+    assert_eq!(app.results_state.filter.as_deref(), Some("? "));
+    assert!(app.help.is_none());
+    assert!(!app.pending_space);
+}
+
+#[test]
 fn enter_locks_filter_and_returns_to_results_mode() {
     let mut app = common::test_app();
     seed_three_rows(&mut app);

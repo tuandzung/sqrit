@@ -38,7 +38,7 @@ On first run, the connection picker appears. Connections are stored in `~/.sqrit
 
 ### Key Bindings
 
-Press `?` in any non-insert mode for a live help overlay listing the active mode's keybindings.
+Press `?` in Query Normal, Explorer, or Results for a live help overlay listing that mode's keybindings.
 
 #### Connection Picker
 | Key | Action |
@@ -105,7 +105,7 @@ Press `?` in any non-insert mode for a live help overlay listing the active mode
 | `Esc` | Close |
 
 #### Space Command Palette
-A leading `<space>` from any non-insert/non-picker mode arms a one-shot palette. The next key dispatches:
+A leading `<space>` from Query Normal, Explorer, or Results arms a one-shot palette. The next key dispatches:
 
 | Key | Action |
 |-----|--------|
@@ -149,6 +149,8 @@ database = "mydb"
 ### Hint Bar
 
 By default, the bottom of the screen shows a context-aware keybinding hint row above the status bar. Toggle in `~/.sqrit/config.toml`:
+
+The left side comes from the active mode's `ModeHandler::bindings()`, including Picker and transient modes. The `<sp> cmd  ? help` suffix appears only in Query Normal, Explorer, and Results, where both shortcuts are active. On a one-row terminal, the status bar takes priority and the hint is hidden.
 
 ```toml
 [hint_bar]
