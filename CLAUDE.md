@@ -8,19 +8,19 @@ Local dev wraps `cargo` behind a `justfile`. Use either:
 
 ```bash
 # raw cargo
-cargo build                    # build
-cargo run                      # run TUI
-cargo test                     # all tests except #[ignore]'d adapter tests
+cargo build # build
+cargo run   # run TUI
+cargo test  # all tests except #[ignore]'d adapter tests
 cargo test --test sqlite_adapter
-cargo clippy -- -D warnings    # lint
-cargo fmt --check              # format check
+cargo clippy -- -D warnings # lint
+cargo fmt --check           # format check
 
 # just (preferred for dev loop; see ADR 4)
-just                           # list recipes
-just check                     # fmt --check + clippy + test (pre-push gate)
-just it                        # docker compose up + pg/mysql adapter tests
-just it-sqlite                 # sqlite adapter only (no docker)
-just db-up / db-down           # container lifecycle
+just                 # list recipes
+just check           # fmt --check + clippy + test (pre-push gate)
+just it              # docker compose up + pg/mysql adapter tests
+just it-sqlite       # sqlite adapter only (no docker)
+just db-up / db-down # container lifecycle
 ```
 
 Integration tests for PostgreSQL and MySQL are `#[ignore]`d and require running databases. The `justfile` + `docker-compose.yml` at the repo root provide them locally on the same ports/credentials as CI (`15432`, `13306`, `sqrit/sqrit`, `sqrit_test`). See `docs/adr/0004-local-integration-runner.md`.
@@ -92,3 +92,17 @@ Significant decisions live in `docs/adr/`:
 ## Domain Glossary
 
 See `CONTEXT.md` for term definitions (Connection, Backend, Query, Results, Explorer, Mode, Pane, Autocomplete, Status Bar, Theme, Command Palette, Help Overlay, Cell Viewer, Query History, Filter, Cancel).
+
+## Agent skills
+
+### Issue tracker
+
+Work is tracked in GitHub Issues. External PRs are also a triage request surface. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Use the five canonical triage labels. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+This is a single-context repository. See `docs/agents/domain.md`.
