@@ -193,6 +193,45 @@ fn all_bundled_defaults_parse() {
 }
 
 #[test]
+fn bundled_themes_define_hint_bar_palettes() {
+    let expected = [
+        ("rose-pine.toml", [0x26233a, 0x908caa, 0xc4a7e7, 0x403d52]),
+        ("tokyo-night.toml", [0x1a1b26, 0x9aa5ce, 0x7aa2f7, 0x414868]),
+        ("nord.toml", [0x2e3440, 0xd8dee9, 0x88c0d0, 0x4c566a]),
+        ("gruvbox.toml", [0x282828, 0xbdae93, 0xfabd2f, 0x504945]),
+        (
+            "catppuccin-macchiato.toml",
+            [0x1e2030, 0xa5adcb, 0x8aadf4, 0x363a4f],
+        ),
+    ];
+    let rgb = |hex: u32| Color::Rgb((hex >> 16) as u8, (hex >> 8) as u8, hex as u8);
+
+    for (filename, expected_palette) in expected {
+        let toml = sqrit::theme::BUNDLED
+            .iter()
+            .find_map(|(name, toml)| (*name == filename).then_some(*toml))
+            .unwrap_or_else(|| panic!("missing bundled theme: {filename}"));
+        let theme = Theme::parse(toml).unwrap();
+
+        assert_eq!(
+            (
+                theme.hint_bar_bg,
+                theme.hint_bar_fg,
+                theme.hint_bar_key,
+                theme.hint_bar_separator,
+            ),
+            (
+                rgb(expected_palette[0]),
+                rgb(expected_palette[1]),
+                rgb(expected_palette[2]),
+                rgb(expected_palette[3]),
+            ),
+            "wrong hint bar palette for {filename}"
+        );
+    }
+}
+
+#[test]
 fn parse_missing_required_field_errors() {
     // Omit `error` field
     let toml = r##"
