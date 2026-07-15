@@ -8,6 +8,7 @@ The lazygit of SQL databases. Connect, query, browse — from the terminal.
 - **Vim-lite editor**: normal/insert modes, h/j/k/l, w/b, dd/yy/p, undo
 - **SQL highlighting**: keywords, types, strings, comments, numbers
 - **3-pane TUI**: Explorer sidebar, Query editor, Results table
+- **Schema browser**: tables, views, materialized views, indexes, triggers, functions, procedures, sequences — under per-namespace collapsible groups
 - **Connection picker**: filter by name, select to connect
 - **Non-blocking I/O**: async DB calls via Tokio — UI never freezes during queries or schema loads
 - **Themes**: five bundled palettes (Rose Pine, Tokyo Night, Nord, Gruvbox, Catppuccin Macchiato), live picker via `<space>t`, plus any user TOML in `~/.sqrit/themes/`
@@ -53,8 +54,8 @@ Press `?` in Query Normal, Explorer, or Results for a live help overlay listing 
 | Key | Action |
 |-----|--------|
 | `j/k` or Up/Down | Navigate items |
-| Enter | Expand/collapse table or view |
-| `s` | `SELECT * FROM <table> LIMIT 100` |
+| Enter | Expand/collapse the selected node |
+| `s` | `SELECT * FROM <ns>.<obj> LIMIT 100` (tables / views / materialized views only) |
 | `q` | Back to query editor |
 
 #### Query Editor — Normal Mode

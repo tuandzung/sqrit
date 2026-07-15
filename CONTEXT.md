@@ -12,6 +12,25 @@ Database-specific implementation of the `Database` trait.
 Three backends in baseline: SQLite (`rusqlite` via `spawn_blocking`), PostgreSQL (`sqlx`), MySQL (`sqlx`).
 All equally first-class. Each backend handles: connect, execute query, schema introspection, disconnect.
 
+### Namespace (v0.3)
+A backend-specific container for schema objects. PostgreSQL exposes each user schema and filters `pg_catalog`, `information_schema`, `pg_toast`, `pg_temp_*`, and `pg_toast_temp_*`; MySQL exposes only the selected database returned by `DATABASE()`; SQLite exposes one implicit namespace with an empty name.
+
+Explorer omits the namespace row when exactly one namespace exists.
+
+### Object Kind (v0.3)
+A schema object's category. Explorer uses it to group objects, decide whether `s` can run `SELECT *`, and name status messages.
+
+| Kind | SQLite | PostgreSQL | MySQL | `s` |
+|------|--------|------------|-------|-----|
+| Table | ✓ | ✓ | ✓ | ✓ |
+| View | ✓ | ✓ | ✓ | ✓ |
+| Materialized View | — | ✓ | — | ✓ |
+| Index | ✓ | ✓ | ✓ | — |
+| Trigger | ✓ | ✓ | ✓ | — |
+| Function | — | ✓ | ✓ | — |
+| Procedure | — | ✓ | ✓ | — |
+| Sequence | — | ✓ | — | — |
+
 ### Query
 SQL text edited in the query pane. Executed on `Enter` in Normal mode or `Ctrl+Enter` in Insert mode.
 
@@ -22,8 +41,12 @@ Copy: cell (`yc`), row (`yy`), all (`ya`). Export: CSV, JSON.
 Selection is two-axis: the active row is tinted with `selection_bg`, and the active cell is layered on top with reverse video (`Modifier::REVERSED`); the header cell of the active column is also reverse-highlighted. Selection is persistent — focus changes (`<space>e/q/r`) recolor the border but never clear the cell highlight.
 
 ### Explorer
-Left sidebar schema browser. Tree hierarchy: connection → tables → columns, views → columns.
-`Enter` expands/collapses. `s` runs `SELECT * FROM <table> LIMIT 100`.
+Left sidebar schema browser. Hierarchy: `Namespace → Group (Object Kind) → Object → Column`; columns appear only under tables, views, and materialized views. Empty groups are hidden. When introspection returns one namespace, Explorer omits the namespace row and starts with object-kind groups.
+
+`Enter` toggles the selected expandable node. `j` and `k` walk visible items.
+
+On a table, view, materialized view, or one of its columns, `s` runs `SELECT * FROM <namespace>.<object> LIMIT 100`. Explorer quotes identifiers per backend: `"namespace"."object"` for PostgreSQL, `` `namespace`.`object` `` for MySQL, and `"object"` for SQLite's empty namespace. On other object kinds, `s` leaves the query unchanged and writes a status-bar message. See [ADR 8](docs/adr/0008-namespace-aware-introspection.md).
+
 Toggleable with `<space>e`.
 
 ### Mode
@@ -128,6 +151,5 @@ Power-user polish, no new system dependencies, no CLI mode. Tracked by milestone
 - Full vim engine (text objects, f/t, marks, registers)
 - DML generation from selected row (editable cell viewer)
 - Alias-aware autocomplete
-- Schema browser extension: procedures, indexes, triggers, sequences
 - External-author theme TOMLs (user-supplied beyond the 4 bundled defaults — already supported by ADR 5, but no marketplace/discovery UX)
 - Cloud-CLI integration (Azure / AWS / GCP)
