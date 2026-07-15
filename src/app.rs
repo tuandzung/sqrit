@@ -564,16 +564,16 @@ impl App {
             _ => self.render_main(frame, content_area),
         }
         if self.mode == Mode::ThemePicker && self.theme_picker.is_some() {
-            self.render_theme_picker(frame, area);
+            self.render_theme_picker(frame, content_area);
         }
         if self.mode == Mode::Help && self.help.is_some() {
-            self.render_help(frame, area);
+            self.render_help(frame, content_area);
         }
         if self.mode == Mode::CellViewer && self.cell_viewer.is_some() {
-            self.render_cell_viewer(frame, area);
+            self.render_cell_viewer(frame, content_area);
         }
         if self.mode == Mode::HistoryPicker && self.history_picker.is_some() {
-            self.render_history_picker(frame, area);
+            self.render_history_picker(frame, content_area);
         }
         if hint_height > 0 {
             let bindings = self.mode.handler().bindings();
