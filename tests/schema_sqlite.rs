@@ -25,7 +25,7 @@ async fn seed(adapter: &SqliteAdapter) {
     adapter
         .execute(
             "CREATE TRIGGER trg_users_audit AFTER UPDATE ON users
-             BEGIN UPDATE users SET email = email; END",
+             BEGIN INSERT INTO orders (user_id) VALUES (NEW.id); END",
         )
         .await
         .unwrap();
@@ -54,6 +54,28 @@ async fn sqlite_schema_info_returns_namespace_with_all_kinds() {
     assert!(namespace.functions.is_empty());
     assert!(namespace.procedures.is_empty());
     assert!(namespace.sequences.is_empty());
+}
+
+#[tokio::test]
+async fn sqlite_index_uniqueness_comes_from_metadata() {
+    let tmp = tempdir().unwrap();
+    let path = tmp.path().join("t.db");
+    let mut adapter = SqliteAdapter::new(path.to_str().unwrap());
+    adapter.connect().await.unwrap();
+    adapter
+        .execute("CREATE TABLE users (email TEXT)")
+        .await
+        .unwrap();
+    adapter
+        .execute("CREATE INDEX unique_email ON users(email)")
+        .await
+        .unwrap();
+
+    let schema = adapter.schema_info().await.unwrap();
+    let index = &schema.namespaces[0].indexes[0];
+
+    assert_eq!(index.name, "unique_email");
+    assert!(!index.unique);
 }
 
 #[test]

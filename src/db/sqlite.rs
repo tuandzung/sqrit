@@ -30,9 +30,11 @@ impl SqliteAdapter {
     async fn list_indexes_sqlite(&self) -> anyhow::Result<Vec<IndexObject>> {
         let result = self
             .execute(
-                "SELECT name, tbl_name, sql FROM sqlite_master
-                 WHERE type = 'index' AND name NOT LIKE 'sqlite_%'
-                 ORDER BY name",
+                "SELECT m.name, m.tbl_name, p.\"unique\" AS is_unique
+                 FROM sqlite_master AS m
+                 JOIN pragma_index_list(m.tbl_name) AS p ON p.name = m.name
+                 WHERE m.type = 'index' AND m.name NOT LIKE 'sqlite_%'
+                 ORDER BY m.name",
             )
             .await?;
         Ok(result
@@ -47,14 +49,11 @@ impl SqliteAdapter {
                     Some(Value::Text(table)) => table.clone(),
                     _ => return None,
                 };
-                let sql = match row.get("sql") {
-                    Some(Value::Text(sql)) => sql.as_str(),
-                    _ => "",
-                };
+                let unique = matches!(row.get("is_unique"), Some(Value::Integer(1)));
                 Some(IndexObject {
                     name,
                     table,
-                    unique: sql.to_uppercase().contains("UNIQUE"),
+                    unique,
                 })
             })
             .collect())
@@ -84,9 +83,10 @@ impl SqliteAdapter {
                     Some(Value::Text(sql)) => sql.to_uppercase(),
                     _ => String::new(),
                 };
-                let event = ["INSERT", "UPDATE", "DELETE"]
-                    .into_iter()
-                    .find(|event| sql.split_whitespace().any(|word| word == *event))
+                let event = sql
+                    .split_whitespace()
+                    .take_while(|word| *word != "ON")
+                    .find(|word| matches!(*word, "INSERT" | "UPDATE" | "DELETE"))
                     .unwrap_or("")
                     .to_string();
                 Some(TriggerObject { name, table, event })

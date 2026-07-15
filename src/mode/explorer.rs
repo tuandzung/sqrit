@@ -1,6 +1,6 @@
 use crossterm::event::{KeyCode, KeyEvent};
 
-use crate::app::App;
+use crate::app::{App, QueryStatus};
 use crate::explorer::TreeItem;
 use crate::mode::{KeyBinding, Mode, ModeHandler};
 
@@ -58,6 +58,8 @@ pub fn handle_key(key: KeyEvent, app: &mut App) {
                     } => (ns, *kind, parent),
                     _ => return,
                 };
+                app.query_status = QueryStatus::Idle;
+                app.status_message.clear();
                 if !kind.supports_select_star() {
                     app.status_message = format!(
                         "no SELECT for {} (only tables/views/materialized views)",
@@ -87,6 +89,7 @@ pub fn handle_key(key: KeyEvent, app: &mut App) {
                     }
                     _ => quote_sqlite(name),
                 };
+                app.results_state.reset_pagination();
                 app.pending_query = Some(format!("SELECT * FROM {qualified} LIMIT 100"));
                 app.switch_pane(Mode::Results, crate::app::FocusedPane::Results);
             }

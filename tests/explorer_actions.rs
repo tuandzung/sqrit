@@ -1,7 +1,7 @@
 mod common;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use sqrit::app::{App, FocusedPane};
+use sqrit::app::{App, FocusedPane, QueryStatus};
 use sqrit::config::DbType;
 use sqrit::db::types::{ColumnInfo, IndexObject, Namespace, ObjectKind, SchemaInfo, TableObject};
 use sqrit::explorer::{NodeKey, TreeItem};
@@ -125,16 +125,51 @@ fn s_on_column_uses_parent_table() {
 }
 
 #[test]
-fn pressing_s_on_an_index_is_a_noop_with_status() {
+fn s_on_table_resets_previous_results_page() {
+    let mut app = make_explorer_app(DbType::Sqlite, "");
+    select_object(&mut app, ObjectKind::Table);
+    app.results_state.page_offset = app.results_state.page_size * 2;
+    app.results_state.selected_row = 4;
+    app.results_state.has_next_page = true;
+
+    press(&mut app, KeyCode::Char('s'));
+
+    assert_eq!(app.results_state.page_offset, 0);
+    assert_eq!(app.results_state.selected_row, 0);
+    assert!(!app.results_state.has_next_page);
+}
+
+#[test]
+fn pressing_s_on_an_index_replaces_prior_query_error() {
     let mut app = make_explorer_app(DbType::Sqlite, "");
     select_object(&mut app, ObjectKind::Index);
+    app.query_status = QueryStatus::Error("old query failed".to_string());
     let before = app.pending_query.clone();
 
     press(&mut app, KeyCode::Char('s'));
 
     assert_eq!(app.pending_query, before);
+    assert_eq!(app.query_status, QueryStatus::Idle);
     assert!(app.status_message.contains("no SELECT"));
+    assert!(app.status_bar_text().contains("no SELECT"));
+    assert!(!app.status_bar_text().contains("old query failed"));
     assert_eq!(app.mode, Mode::Explorer);
+}
+
+#[test]
+fn s_on_supported_object_clears_previous_action_status() {
+    let mut app = make_explorer_app(DbType::Sqlite, "");
+    select_object(&mut app, ObjectKind::Index);
+    press(&mut app, KeyCode::Char('s'));
+    select_object(&mut app, ObjectKind::Table);
+    app.query_status = QueryStatus::Error("old query failed".to_string());
+
+    press(&mut app, KeyCode::Char('s'));
+
+    assert_eq!(app.query_status, QueryStatus::Idle);
+    assert!(app.status_message.is_empty());
+    assert!(!app.status_bar_text().contains("no SELECT"));
+    assert!(!app.status_bar_text().contains("old query failed"));
 }
 
 #[test]
