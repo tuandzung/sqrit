@@ -1,5 +1,6 @@
 use std::fs;
 
+use sqrit::app::App;
 use sqrit::config::AppConfig;
 use tempfile::tempdir;
 
@@ -80,4 +81,26 @@ enabled = false
 
     assert!(!cfg.hint_bar.enabled);
     assert!(!cfg.hint_bar.auto_hide_narrow);
+}
+
+#[test]
+fn app_retains_loaded_hint_bar_config() {
+    let dir = tempdir().unwrap();
+    let sqrit_dir = dir.path().join(".sqrit");
+    fs::create_dir(&sqrit_dir).unwrap();
+    fs::write(
+        sqrit_dir.join("config.toml"),
+        "[hint_bar]\nenabled = false\n",
+    )
+    .unwrap();
+
+    let original_home = std::env::var_os("HOME");
+    std::env::set_var("HOME", dir.path());
+    let app = App::new();
+    match original_home {
+        Some(home) => std::env::set_var("HOME", home),
+        None => std::env::remove_var("HOME"),
+    }
+
+    assert!(!app.unwrap().app_config.hint_bar.enabled);
 }
