@@ -55,10 +55,15 @@ async fn pg_schema_info_covers_all_object_kinds() {
         .views
         .iter()
         .any(|view| view.name == "t12_users_v"));
-    assert!(namespace
+    let materialized_view = namespace
         .materialized_views
         .iter()
-        .any(|view| view.name == "t12_users_mv"));
+        .find(|view| view.name == "t12_users_mv")
+        .expect("t12_users_mv materialized view");
+    assert!(materialized_view
+        .columns
+        .iter()
+        .any(|column| column.name == "id"));
     let indexes = namespace
         .indexes
         .iter()

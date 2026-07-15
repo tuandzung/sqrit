@@ -239,18 +239,19 @@ impl PgAdapter {
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("not connected"))?;
         let rows = sqlx::query_as::<_, (String, String, bool, bool)>(
-            "SELECT column_name, data_type, is_nullable = 'YES', EXISTS (
-                SELECT 1 FROM information_schema.table_constraints tc
-                JOIN information_schema.key_column_usage kcu
-                  ON tc.constraint_name = kcu.constraint_name
-                 AND tc.table_schema = kcu.table_schema
-                WHERE tc.table_name = $2 AND tc.table_schema = $1
-                  AND tc.constraint_type = 'PRIMARY KEY'
-                  AND kcu.column_name = c.column_name
+            "SELECT a.attname::text, pg_catalog.format_type(a.atttypid, NULL),
+                    NOT a.attnotnull, EXISTS (
+                SELECT 1 FROM pg_index i
+                WHERE i.indrelid = c.oid
+                  AND i.indisprimary
+                  AND a.attnum = ANY(i.indkey)
             )
-             FROM information_schema.columns c
-             WHERE table_schema = $1 AND table_name = $2
-             ORDER BY ordinal_position",
+             FROM pg_attribute a
+             JOIN pg_class c ON c.oid = a.attrelid
+             JOIN pg_namespace n ON n.oid = c.relnamespace
+             WHERE n.nspname = $1 AND c.relname = $2
+               AND a.attnum > 0 AND NOT a.attisdropped
+             ORDER BY a.attnum",
         )
         .bind(schema)
         .bind(table)
