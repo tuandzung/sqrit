@@ -1,7 +1,10 @@
+mod common;
+
 use ratatui::backend::TestBackend;
 use ratatui::style::Modifier;
 use ratatui::text::Span;
 use ratatui::Terminal;
+use sqrit::app::{App, FocusedPane};
 use sqrit::hint_bar::{compose, render, MIN_WIDTH, PALETTE_SUFFIX};
 use sqrit::mode::KeyBinding;
 use sqrit::theme::Theme;
@@ -145,5 +148,63 @@ fn render_still_paints_the_row_below_minimum_width() {
         let cell = &buffer[(x, 0)];
         assert_eq!(cell.symbol(), " ");
         assert_eq!(cell.bg, theme.hint_bar_bg);
+    }
+}
+
+fn render_app(app: &mut App, width: u16, height: u16) -> Terminal<TestBackend> {
+    let backend = TestBackend::new(width, height);
+    let mut terminal = Terminal::new(backend).unwrap();
+    terminal.draw(|frame| app.render(frame)).unwrap();
+    terminal
+}
+
+fn row_text(terminal: &Terminal<TestBackend>, y: u16) -> String {
+    let buffer = terminal.backend().buffer();
+    let mut text = String::new();
+    for x in 0..buffer.area.width {
+        text.push_str(buffer[(x, y)].symbol());
+    }
+    text
+}
+
+#[test]
+fn app_renders_hint_row_above_status_in_normal_and_maximized_layouts() {
+    const WIDTH: u16 = 100;
+    const HEIGHT: u16 = 10;
+
+    for maximized in [None, Some(FocusedPane::Query)] {
+        let mut app = common::test_app();
+        app.maximized = maximized;
+
+        let terminal = render_app(&mut app, WIDTH, HEIGHT);
+
+        assert!(
+            row_text(&terminal, HEIGHT - 2).starts_with("i Enter Insert mode"),
+            "missing hint row for {maximized:?}",
+        );
+        assert!(row_text(&terminal, HEIGHT - 1).starts_with(" NORMAL"));
+    }
+}
+
+#[test]
+fn hidden_hint_row_has_zero_height_in_normal_and_maximized_layouts() {
+    const HEIGHT: u16 = 10;
+
+    for (width, enabled, auto_hide_narrow) in [(100, false, false), (MIN_WIDTH - 1, true, true)] {
+        for maximized in [None, Some(FocusedPane::Query)] {
+            let mut app = common::test_app();
+            app.app_config.hint_bar.enabled = enabled;
+            app.app_config.hint_bar.auto_hide_narrow = auto_hide_narrow;
+            app.maximized = maximized;
+
+            let terminal = render_app(&mut app, width, HEIGHT);
+
+            assert_eq!(
+                terminal.backend().buffer()[(0, HEIGHT - 2)].symbol(),
+                "└",
+                "main pane did not reclaim hidden hint row for {maximized:?}",
+            );
+            assert!(row_text(&terminal, HEIGHT - 1).starts_with(" NORMAL"));
+        }
     }
 }

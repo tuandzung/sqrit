@@ -808,18 +808,30 @@ impl App {
     }
 
     fn render_main(&mut self, frame: &mut ratatui::Frame, area: Rect) {
-        let status_height = 1u16;
-        let main_height = area.height.saturating_sub(status_height);
+        let hint_enabled = self.app_config.hint_bar.enabled;
+        let hint_height = if hint_enabled {
+            let too_narrow = area.width < crate::hint_bar::MIN_WIDTH;
+            if too_narrow && self.app_config.hint_bar.auto_hide_narrow {
+                0u16
+            } else {
+                1u16
+            }
+        } else {
+            0u16
+        };
 
-        let main_area = Rect {
-            height: main_height,
-            ..area
-        };
-        let status_area = Rect {
-            y: area.y + main_height,
-            height: status_height,
-            ..area
-        };
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Min(0),
+                Constraint::Length(hint_height),
+                Constraint::Length(1),
+            ])
+            .split(area);
+
+        let main_area = chunks[0];
+        let hint_area = chunks[1];
+        let status_area = chunks[2];
 
         // Maximized: render only focused pane full-screen
         if let Some(maximized_pane) = self.maximized {
@@ -832,6 +844,10 @@ impl App {
                 FocusedPane::Results => self.render_results(frame, main_area),
             }
             let status_text = self.status_bar_text();
+            if hint_height > 0 {
+                let bindings = self.mode.handler().bindings();
+                crate::hint_bar::render(frame, hint_area, bindings, &self.theme);
+            }
             frame.render_widget(Paragraph::new(status_text), status_area);
             return;
         }
@@ -859,6 +875,10 @@ impl App {
         self.render_results(frame, results_area);
 
         let status_text = self.status_bar_text();
+        if hint_height > 0 {
+            let bindings = self.mode.handler().bindings();
+            crate::hint_bar::render(frame, hint_area, bindings, &self.theme);
+        }
         frame.render_widget(Paragraph::new(status_text), status_area);
     }
 
