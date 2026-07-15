@@ -54,6 +54,46 @@ fn help_modal_renders_origin_bindings_in_query_normal() {
 }
 
 #[test]
+fn short_help_modal_ends_above_hint_and_status_rows() {
+    const WIDTH: u16 = 80;
+    const HEIGHT: u16 = 17;
+
+    let mut app = common::test_app();
+    open_help(&mut app, Mode::QueryNormal);
+
+    let bindings = Mode::QueryNormal.handler().bindings();
+    let max_key = bindings
+        .iter()
+        .map(|binding| binding.key.chars().count())
+        .max()
+        .unwrap();
+    let max_action = bindings
+        .iter()
+        .map(|binding| binding.action.chars().count())
+        .max()
+        .unwrap();
+    let content_area = Rect::new(0, 0, WIDTH, HEIGHT - 2);
+    let modal = App::help_modal_rect(
+        content_area,
+        bindings.len(),
+        App::help_title(Mode::QueryNormal).chars().count(),
+        max_key,
+        max_action,
+    );
+
+    let backend = TestBackend::new(WIDTH, HEIGHT);
+    let mut terminal = Terminal::new(backend).unwrap();
+    terminal.draw(|frame| app.render(frame)).unwrap();
+
+    let bottom_left = &terminal.backend().buffer()[(modal.x, modal.bottom() - 1)];
+    assert_eq!(
+        bottom_left.symbol(),
+        "└",
+        "help bottom border must remain inside content area",
+    );
+}
+
+#[test]
 fn help_modal_renders_explorer_bindings_when_opened_from_explorer() {
     let mut app = common::test_app();
     open_help(&mut app, Mode::Explorer);

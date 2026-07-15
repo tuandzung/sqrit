@@ -13,6 +13,7 @@ The lazygit of SQL databases. Connect, query, browse — from the terminal.
 - **Themes**: five bundled palettes (Rose Pine, Tokyo Night, Nord, Gruvbox, Catppuccin Macchiato), live picker via `<space>t`, plus any user TOML in `~/.sqrit/themes/`
 - **Space command palette**: `<space>` arms a one-shot palette for top-level actions (maximize, theme, quit, history, cancel, disconnect)
 - **Help overlay**: `?` lists the active mode's keybindings
+- **Hint bar**: always-visible mode-aware keybinding row above the status bar; toggleable
 - **Fuzzy row filter**: `/` in Results live-filters loaded rows by subsequence match across all columns; matched chars highlighted
 - **Query history**: every executed query persisted to `~/.sqrit/history/<connection>.jsonl`, picker via `<space>h`
 - **Cell viewer**: `v` in Results opens a modal with raw/formatted toggle (pretty JSON, hex blobs, timezone-aware dates)
@@ -37,7 +38,7 @@ On first run, the connection picker appears. Connections are stored in `~/.sqrit
 
 ### Key Bindings
 
-Press `?` in any non-insert mode for a live help overlay listing the active mode's keybindings.
+Press `?` in Query Normal, Explorer, or Results for a live help overlay listing that mode's keybindings.
 
 #### Connection Picker
 | Key | Action |
@@ -104,7 +105,7 @@ Press `?` in any non-insert mode for a live help overlay listing the active mode
 | `Esc` | Close |
 
 #### Space Command Palette
-A leading `<space>` from any non-insert/non-picker mode arms a one-shot palette. The next key dispatches:
+A leading `<space>` from Query Normal, Explorer, or Results arms a one-shot palette. The next key dispatches:
 
 | Key | Action |
 |-----|--------|
@@ -144,6 +145,20 @@ username = "user"
 password = "pass"
 database = "mydb"
 ```
+
+### Hint Bar
+
+By default, the bottom of the screen shows a context-aware keybinding hint row above the status bar. Toggle in `~/.sqrit/config.toml`:
+
+The left side comes from the active mode's `ModeHandler::bindings()`, including Picker and transient modes. The `<sp> cmd  ? help` suffix appears only in Query Normal, Explorer, and Results, where both shortcuts are active. On a one-row terminal, the status bar takes priority and the hint is hidden.
+
+```toml
+[hint_bar]
+enabled = true            # set false to hide the row
+auto_hide_narrow = false  # set true to omit the row when terminal width < 40 cols
+```
+
+Theme it via optional `hint_bar_*` keys in `~/.sqrit/themes/<name>.toml`'s `[colors]` block — missing keys inherit from the palette. See [ADR 7](docs/adr/0007-hint-bar.md).
 
 ## Build from Source
 

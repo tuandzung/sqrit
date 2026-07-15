@@ -54,6 +54,10 @@ pub struct Theme {
     pub number: Color,
     pub type_: Color,
     pub error: Color,
+    pub hint_bar_bg: Color,
+    pub hint_bar_fg: Color,
+    pub hint_bar_key: Color,
+    pub hint_bar_separator: Color,
 }
 
 #[derive(Deserialize)]
@@ -76,6 +80,14 @@ struct RawColors {
     #[serde(rename = "type")]
     type_: String,
     error: String,
+    #[serde(default)]
+    hint_bar_bg: Option<String>,
+    #[serde(default)]
+    hint_bar_fg: Option<String>,
+    #[serde(default)]
+    hint_bar_key: Option<String>,
+    #[serde(default)]
+    hint_bar_separator: Option<String>,
 }
 
 impl Theme {
@@ -95,18 +107,30 @@ impl Theme {
             number: Color::Rgb(0xff, 0x9e, 0x64),
             type_: Color::Rgb(0x7d, 0xcf, 0xff),
             error: Color::Rgb(0xf7, 0x76, 0x8e),
+            hint_bar_bg: Color::Rgb(0x1a, 0x1b, 0x26),
+            hint_bar_fg: Color::Rgb(0xc0, 0xca, 0xf5),
+            hint_bar_key: Color::Rgb(0x7a, 0xa2, 0xf7),
+            hint_bar_separator: Color::Rgb(0x41, 0x48, 0x68),
         }
     }
 
     pub fn parse(toml_str: &str) -> Result<Self, ThemeError> {
         let raw: RawTheme = toml::from_str(toml_str)?;
         let c = raw.colors;
+        let bg = parse_hex(&c.bg)?;
+        let fg = parse_hex(&c.fg)?;
+        let border_focused = parse_hex(&c.border_focused)?;
+        let border_unfocused = parse_hex(&c.border_unfocused)?;
+        let hint_bar_bg = parse_hex_opt(&c.hint_bar_bg)?.unwrap_or(bg);
+        let hint_bar_fg = parse_hex_opt(&c.hint_bar_fg)?.unwrap_or(fg);
+        let hint_bar_key = parse_hex_opt(&c.hint_bar_key)?.unwrap_or(border_focused);
+        let hint_bar_separator = parse_hex_opt(&c.hint_bar_separator)?.unwrap_or(border_unfocused);
         Ok(Theme {
             name: raw.name,
-            bg: parse_hex(&c.bg)?,
-            fg: parse_hex(&c.fg)?,
-            border_focused: parse_hex(&c.border_focused)?,
-            border_unfocused: parse_hex(&c.border_unfocused)?,
+            bg,
+            fg,
+            border_focused,
+            border_unfocused,
             selection_bg: parse_hex(&c.selection_bg)?,
             keyword: parse_hex(&c.keyword)?,
             string: parse_hex(&c.string)?,
@@ -114,6 +138,10 @@ impl Theme {
             number: parse_hex(&c.number)?,
             type_: parse_hex(&c.type_)?,
             error: parse_hex(&c.error)?,
+            hint_bar_bg,
+            hint_bar_fg,
+            hint_bar_key,
+            hint_bar_separator,
         })
     }
 }
@@ -201,4 +229,11 @@ fn parse_hex(s: &str) -> Result<Color, ThemeError> {
     let g = u8::from_str_radix(&s[3..5], 16).map_err(|_| ThemeError::InvalidHex(s.to_string()))?;
     let b = u8::from_str_radix(&s[5..7], 16).map_err(|_| ThemeError::InvalidHex(s.to_string()))?;
     Ok(Color::Rgb(r, g, b))
+}
+
+fn parse_hex_opt(s: &Option<String>) -> Result<Option<Color>, ThemeError> {
+    match s {
+        Some(v) => Ok(Some(parse_hex(v)?)),
+        None => Ok(None),
+    }
 }

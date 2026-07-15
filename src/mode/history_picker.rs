@@ -54,8 +54,8 @@ pub struct HistoryPickerHandler;
 
 const BINDINGS: &[KeyBinding] = &[
     KeyBinding {
-        key: "Type",
-        action: "Filter by substring on SQL",
+        key: "Esc",
+        action: "Close the picker without modifying the editor",
     },
     KeyBinding {
         key: "Up / Down",
@@ -66,12 +66,12 @@ const BINDINGS: &[KeyBinding] = &[
         action: "Paste selected SQL into the editor (no auto-execute)",
     },
     KeyBinding {
-        key: "Backspace",
-        action: "Delete one character from the filter",
+        key: "Type",
+        action: "Filter by substring on SQL",
     },
     KeyBinding {
-        key: "Esc",
-        action: "Close the picker without modifying the editor",
+        key: "Backspace",
+        action: "Delete one character from the filter",
     },
 ];
 

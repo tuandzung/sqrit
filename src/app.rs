@@ -128,6 +128,7 @@ pub struct App {
     pub cell_viewer: Option<crate::mode::cell_viewer::CellViewerState>,
     pub history_picker: Option<crate::mode::history_picker::HistoryPickerState>,
     pub clipboard_writer: crate::clipboard::ClipboardWriter,
+    pub app_config: crate::config::AppConfig,
     pub app_config_path: std::path::PathBuf,
     pub sqrit_dir: std::path::PathBuf,
     pub query_started_at: Option<Instant>,
@@ -187,6 +188,7 @@ impl App {
             cell_viewer: None,
             history_picker: None,
             clipboard_writer: crate::clipboard::ClipboardWriter::new(),
+            app_config,
             app_config_path,
             sqrit_dir,
             query_started_at: None,
@@ -268,10 +270,7 @@ impl App {
         // own their own dismiss key).
         if key.modifiers == KeyModifiers::NONE
             && matches!(key.code, KeyCode::Char('?'))
-            && matches!(
-                self.mode,
-                Mode::QueryNormal | Mode::Explorer | Mode::Results
-            )
+            && self.mode.supports_global_shortcuts()
         {
             let origin = self.mode;
             crate::mode::help::open(self, origin);
@@ -279,8 +278,8 @@ impl App {
         }
 
         // Global space-prefix command palette (see CONTEXT.md "Command Palette").
-        // Active in non-Insert, non-Picker modes. QueryInsert keeps `<space>` as
-        // a literal char; Picker types `<space>` into its filter.
+        // Active in QueryNormal / Explorer / Results. Text-entry modes keep
+        // `<space>` as a literal character.
         //
         // Palette dispatch only fires for unmodified keys. Modified combos
         // (Ctrl/Alt/Shift) clear the pending flag and fall through to the
@@ -288,7 +287,7 @@ impl App {
         // same as `<space>c`.
         if self.pending_space {
             self.pending_space = false;
-            if key.modifiers == KeyModifiers::NONE {
+            if self.mode.supports_global_shortcuts() && key.modifiers == KeyModifiers::NONE {
                 match key.code {
                     KeyCode::Char('f') => {
                         self.toggle_maximize();
@@ -539,22 +538,54 @@ impl App {
 
     pub fn render(&mut self, frame: &mut ratatui::Frame) {
         let area = frame.area();
+        let hint_enabled = self.app_config.hint_bar.enabled;
+        let hint_height = if hint_enabled && area.height >= 2 {
+            let too_narrow = area.width < crate::hint_bar::MIN_WIDTH;
+            if too_narrow && self.app_config.hint_bar.auto_hide_narrow {
+                0u16
+            } else {
+                1u16
+            }
+        } else {
+            0u16
+        };
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Min(0),
+                Constraint::Length(hint_height),
+                Constraint::Length(1),
+            ])
+            .split(area);
+        let content_area = chunks[0];
+
         match self.mode {
-            Mode::Picker => self.render_picker(frame, area),
-            _ => self.render_main(frame, area),
+            Mode::Picker => self.render_picker(frame, content_area),
+            _ => self.render_main(frame, content_area),
         }
         if self.mode == Mode::ThemePicker && self.theme_picker.is_some() {
-            self.render_theme_picker(frame, area);
+            self.render_theme_picker(frame, content_area);
         }
         if self.mode == Mode::Help && self.help.is_some() {
-            self.render_help(frame, area);
+            self.render_help(frame, content_area);
         }
         if self.mode == Mode::CellViewer && self.cell_viewer.is_some() {
-            self.render_cell_viewer(frame, area);
+            self.render_cell_viewer(frame, content_area);
         }
         if self.mode == Mode::HistoryPicker && self.history_picker.is_some() {
-            self.render_history_picker(frame, area);
+            self.render_history_picker(frame, content_area);
         }
+        if hint_height > 0 {
+            let bindings = self.mode.handler().bindings();
+            crate::hint_bar::render(
+                frame,
+                chunks[1],
+                bindings,
+                self.mode.supports_global_shortcuts(),
+                &self.theme,
+            );
+        }
+        frame.render_widget(Paragraph::new(self.status_bar_text()), chunks[2]);
     }
 
     fn render_history_picker(&self, frame: &mut ratatui::Frame, area: Rect) {
@@ -806,31 +837,16 @@ impl App {
     }
 
     fn render_main(&mut self, frame: &mut ratatui::Frame, area: Rect) {
-        let status_height = 1u16;
-        let main_height = area.height.saturating_sub(status_height);
-
-        let main_area = Rect {
-            height: main_height,
-            ..area
-        };
-        let status_area = Rect {
-            y: area.y + main_height,
-            height: status_height,
-            ..area
-        };
-
         // Maximized: render only focused pane full-screen
         if let Some(maximized_pane) = self.maximized {
             match maximized_pane {
                 FocusedPane::Explorer => {
-                    self.prepare_explorer_viewport(main_area);
-                    self.render_explorer(frame, main_area);
+                    self.prepare_explorer_viewport(area);
+                    self.render_explorer(frame, area);
                 }
-                FocusedPane::Query => self.render_query(frame, main_area),
-                FocusedPane::Results => self.render_results(frame, main_area),
+                FocusedPane::Query => self.render_query(frame, area),
+                FocusedPane::Results => self.render_results(frame, area),
             }
-            let status_text = self.status_bar_text();
-            frame.render_widget(Paragraph::new(status_text), status_area);
             return;
         }
 
@@ -838,7 +854,7 @@ impl App {
         let main_chunks = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Length(25), Constraint::Min(0)])
-            .split(main_area);
+            .split(area);
 
         let explorer_area = main_chunks[0];
         let right_area = main_chunks[1];
@@ -855,9 +871,6 @@ impl App {
         self.render_explorer(frame, explorer_area);
         self.render_query(frame, query_area);
         self.render_results(frame, results_area);
-
-        let status_text = self.status_bar_text();
-        frame.render_widget(Paragraph::new(status_text), status_area);
     }
 
     fn prepare_explorer_viewport(&mut self, area: Rect) {

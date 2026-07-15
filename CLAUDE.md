@@ -76,6 +76,7 @@ Project-level rules; violating one usually means an architectural mistake.
 - V7: Autocomplete triggers after 300ms idle.
 - V8: INSERT mode renders a visible terminal cursor that honors viewport scroll.
 - V9: Bracketed paste is enabled at startup and disabled at shutdown (including via the panic hook). Multi-line clipboard input is delivered to modes via `ModeHandler::handle_paste`, never as a stream of `Char(c)` events.
+- V10: Every mode's hint bar bindings come from `ModeHandler::bindings()` only — never inline strings. `Mode::supports_global_shortcuts()` is the single source for global help routing and `<sp> cmd  ? help` suffix visibility.
 
 ## Decision records
 

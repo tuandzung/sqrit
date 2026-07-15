@@ -8,24 +8,24 @@ pub struct ResultsHandler;
 
 const BINDINGS: &[KeyBinding] = &[
     KeyBinding {
+        key: "/",
+        action: "Fuzzy-filter loaded rows (live, all columns)",
+    },
+    KeyBinding {
         key: "h / j / k / l",
         action: "Move selection left / down / up / right",
-    },
-    KeyBinding {
-        key: "PgDn / PgUp",
-        action: "Next / previous page",
-    },
-    KeyBinding {
-        key: "yc / yy / ya",
-        action: "Copy cell / row / all to clipboard",
     },
     KeyBinding {
         key: "v",
         action: "Open the selected cell in the viewer modal",
     },
     KeyBinding {
-        key: "/",
-        action: "Fuzzy-filter loaded rows (live, all columns)",
+        key: "yc / yy / ya",
+        action: "Copy cell / row / all to clipboard",
+    },
+    KeyBinding {
+        key: "PgDn / PgUp",
+        action: "Next / previous page",
     },
     KeyBinding {
         key: ",c",

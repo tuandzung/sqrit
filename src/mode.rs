@@ -70,6 +70,10 @@ impl Mode {
         self.handler().dispatch(key, app);
     }
 
+    pub fn supports_global_shortcuts(&self) -> bool {
+        matches!(self, Mode::QueryNormal | Mode::Explorer | Mode::Results)
+    }
+
     pub fn label(&self) -> &'static str {
         match self {
             Mode::Picker => "PICKER",

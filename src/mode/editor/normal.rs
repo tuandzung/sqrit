@@ -19,12 +19,12 @@ pub struct NormalHandler;
 
 const BINDINGS: &[KeyBinding] = &[
     KeyBinding {
-        key: "Enter",
-        action: "Execute query",
-    },
-    KeyBinding {
         key: "i",
         action: "Enter Insert mode",
+    },
+    KeyBinding {
+        key: "Enter",
+        action: "Execute query",
     },
     KeyBinding {
         key: "h / j / k / l",

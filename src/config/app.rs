@@ -10,6 +10,32 @@ use serde::{Deserialize, Serialize};
 pub struct AppConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub theme: Option<String>,
+    #[serde(default)]
+    pub hint_bar: HintBarConfig,
+}
+
+/// Hint-bar layout knobs. Missing fields → `Default` (enabled = true,
+/// auto_hide_narrow = false). Loading is forward-additive: an `AppConfig`
+/// written by v0.3.0 (no `[hint_bar]` section) deserialises with defaults.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct HintBarConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub auto_hide_narrow: bool,
+}
+
+impl Default for HintBarConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            auto_hide_narrow: false,
+        }
+    }
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl AppConfig {

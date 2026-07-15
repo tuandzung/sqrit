@@ -48,13 +48,13 @@ Suggests: SQL keywords, table names, column names (from current schema).
 No alias resolution in baseline.
 
 ### Status Bar
-Fixed bar at bottom. Shows: current mode, connection name, query status (idle/running/error), error messages.
+Fixed bar at the bottom row. Shows: current mode, connection name, query status (idle/running/error), error messages. The hint bar (v0.3) renders one row above when enabled — see "Hint Bar".
 
 ### Theme (v0.2)
 Visual palette applied across the TUI. Distributed as TOML files in `~/.sqrit/themes/`; five defaults (Rose Pine, Tokyo Night, Nord, Gruvbox, Catppuccin Macchiato) are embedded in the binary and written to that directory on first run (idempotent — existing files are not overwritten). The active theme name is persisted in `~/.sqrit/config.toml`. Switched via `<space>t`, which opens a picker modal with live preview; Enter applies and persists, Esc reverts. Malformed or missing theme files fall back to a hardcoded default with a status-bar warning. See [ADR 5](docs/adr/0005-theme-toml-schema.md).
 
 ### Command Palette (v0.2)
-Single-letter actions reached via the `<space>` prefix from non-Insert, non-Picker modes:
+Single-letter actions reached via the `<space>` prefix from `QueryNormal`, `Explorer`, and `Results`:
 - `<space>f` — maximize focused pane (existing in v0.1)
 - `<space>q` — quit
 - `<space>c` — back to the connection picker (change connection)
@@ -63,10 +63,19 @@ Single-letter actions reached via the `<space>` prefix from non-Insert, non-Pick
 - `<space>t` — open theme picker
 - `<space>h` — open query history picker
 
-Inactive in QueryInsert (`<space>` is literal text) and Picker (`<space>` types into the filter).
+Inactive elsewhere. QueryInsert inserts `<space>` as text; Picker, ResultsFilter, and HistoryPicker type it into their filters.
 
 ### Help Overlay (v0.2)
-Press `?` (no prefix) from any mode to toggle a modal listing the active mode's keybindings. Content is sourced from each mode handler's `bindings()` method (auto-generated, never drifts). Esc dismisses.
+Press `?` (no prefix) from `QueryNormal`, `Explorer`, or `Results` to open a modal listing that mode's keybindings. Content comes from the mode handler's `bindings()` method. Esc dismisses. Input modes keep `?` as literal text.
+
+### Hint Bar (v0.3)
+Single reserved row above the status bar. Every mode, including Picker and transient modes, renders its top keybindings from `ModeHandler::bindings()` on the left. `QueryNormal`, `Explorer`, and `Results` also render `<sp> cmd  ? help` on the right because both shortcuts are active there. Trailing mode bindings truncate on narrow terminals; a binding wider than the row becomes `…`. On a one-row terminal, the status bar takes the row and the hint is suppressed.
+
+Configured under `[hint_bar]` in `~/.sqrit/config.toml`:
+- `enabled` (bool, default `true`) — false hides the row entirely; the status bar reclaims the space.
+- `auto_hide_narrow` (bool, default `false`) — true omits the row when terminal width < 40 cols, keeping the row present at all widths otherwise.
+
+Colored via optional `hint_bar_bg`, `hint_bar_fg`, `hint_bar_key`, `hint_bar_separator` in the theme TOML's `[colors]` section. Missing fields fall back to existing palette colors. See [ADR 7](docs/adr/0007-hint-bar.md).
 
 ### Cell Viewer (v0.2)
 Press `v` on a selected cell in Results to open a read-only modal with the full value. Long text is scrollable; blobs render as hex. `Tab` toggles between **raw** and **formatted** views (JSON pretty-print for text starting with `{` or `[`; chrono-formatted local time for date/timestamp column types). `y` copies the currently displayed form to the clipboard. Esc closes. No in-place editing in v0.2 — DML generation remains deferred.

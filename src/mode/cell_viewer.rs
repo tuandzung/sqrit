@@ -29,6 +29,10 @@ pub struct CellViewerHandler;
 
 const BINDINGS: &[KeyBinding] = &[
     KeyBinding {
+        key: "Esc",
+        action: "Close the cell viewer",
+    },
+    KeyBinding {
         key: "Tab",
         action: "Toggle raw / formatted view",
     },
@@ -39,10 +43,6 @@ const BINDINGS: &[KeyBinding] = &[
     KeyBinding {
         key: "j / k",
         action: "Scroll down / up",
-    },
-    KeyBinding {
-        key: "Esc",
-        action: "Close the cell viewer",
     },
 ];
 

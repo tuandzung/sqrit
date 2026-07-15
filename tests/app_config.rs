@@ -1,5 +1,6 @@
 use std::fs;
 
+use sqrit::app::App;
 use sqrit::config::AppConfig;
 use tempfile::tempdir;
 
@@ -23,6 +24,7 @@ fn save_to_roundtrips_through_disk() {
     let path = dir.path().join("config.toml");
     let cfg = AppConfig {
         theme: Some("gruvbox".to_string()),
+        ..Default::default()
     };
 
     cfg.save_to(&path).unwrap();
@@ -57,4 +59,52 @@ fn load_from_returns_theme_name_when_present() {
     let cfg = AppConfig::load_from(&path).unwrap();
 
     assert_eq!(cfg.theme.as_deref(), Some("nord"));
+}
+
+#[test]
+fn load_without_hint_bar_uses_defaults() {
+    let toml_str = r#"theme = "tokyo-night""#;
+    let cfg: AppConfig = toml::from_str(toml_str).unwrap();
+
+    assert!(cfg.hint_bar.enabled);
+    assert!(!cfg.hint_bar.auto_hide_narrow);
+}
+
+#[test]
+fn load_with_partial_hint_bar_section() {
+    let toml_str = r#"
+theme = "nord"
+[hint_bar]
+enabled = false
+"#;
+    let cfg: AppConfig = toml::from_str(toml_str).unwrap();
+
+    assert!(!cfg.hint_bar.enabled);
+    assert!(!cfg.hint_bar.auto_hide_narrow);
+}
+
+#[test]
+fn app_retains_loaded_hint_bar_config() {
+    if std::env::var_os("SQRIT_APP_CONFIG_CHILD").is_some() {
+        assert!(!App::new().unwrap().app_config.hint_bar.enabled);
+        return;
+    }
+
+    let dir = tempdir().unwrap();
+    let sqrit_dir = dir.path().join(".sqrit");
+    fs::create_dir(&sqrit_dir).unwrap();
+    fs::write(
+        sqrit_dir.join("config.toml"),
+        "[hint_bar]\nenabled = false\n",
+    )
+    .unwrap();
+
+    let status = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", "app_retains_loaded_hint_bar_config"])
+        .env("HOME", dir.path())
+        .env("SQRIT_APP_CONFIG_CHILD", "1")
+        .status()
+        .unwrap();
+
+    assert!(status.success());
 }

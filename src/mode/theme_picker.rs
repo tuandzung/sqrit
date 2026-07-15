@@ -8,16 +8,16 @@ pub struct ThemePickerHandler;
 
 const BINDINGS: &[KeyBinding] = &[
     KeyBinding {
+        key: "Esc",
+        action: "Cancel and revert to the previous theme",
+    },
+    KeyBinding {
         key: "Up / Down",
         action: "Preview next / previous theme",
     },
     KeyBinding {
         key: "Enter",
         action: "Apply the previewed theme and persist it",
-    },
-    KeyBinding {
-        key: "Esc",
-        action: "Cancel and revert to the previous theme",
     },
 ];
 
