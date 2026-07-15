@@ -193,7 +193,7 @@ fn all_bundled_defaults_parse() {
 }
 
 #[test]
-fn bundled_themes_define_hint_bar_palettes() {
+fn bundled_themes_define_exact_hint_bar_palettes() {
     let expected = [
         ("rose-pine.toml", [0x26233a, 0x908caa, 0xc4a7e7, 0x403d52]),
         ("tokyo-night.toml", [0x1a1b26, 0x9aa5ce, 0x7aa2f7, 0x414868]),
@@ -211,6 +211,16 @@ fn bundled_themes_define_hint_bar_palettes() {
             .iter()
             .find_map(|(name, toml)| (*name == filename).then_some(*toml))
             .unwrap_or_else(|| panic!("missing bundled theme: {filename}"));
+        let raw: toml::Value = toml::from_str(toml).unwrap();
+        let colors = raw["colors"].as_table().unwrap();
+        for key in [
+            "hint_bar_bg",
+            "hint_bar_fg",
+            "hint_bar_key",
+            "hint_bar_separator",
+        ] {
+            assert!(colors.contains_key(key), "{filename} missing colors.{key}");
+        }
         let theme = Theme::parse(toml).unwrap();
 
         assert_eq!(
