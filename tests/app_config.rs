@@ -85,6 +85,11 @@ enabled = false
 
 #[test]
 fn app_retains_loaded_hint_bar_config() {
+    if std::env::var_os("SQRIT_APP_CONFIG_CHILD").is_some() {
+        assert!(!App::new().unwrap().app_config.hint_bar.enabled);
+        return;
+    }
+
     let dir = tempdir().unwrap();
     let sqrit_dir = dir.path().join(".sqrit");
     fs::create_dir(&sqrit_dir).unwrap();
@@ -94,13 +99,12 @@ fn app_retains_loaded_hint_bar_config() {
     )
     .unwrap();
 
-    let original_home = std::env::var_os("HOME");
-    std::env::set_var("HOME", dir.path());
-    let app = App::new();
-    match original_home {
-        Some(home) => std::env::set_var("HOME", home),
-        None => std::env::remove_var("HOME"),
-    }
+    let status = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", "app_retains_loaded_hint_bar_config"])
+        .env("HOME", dir.path())
+        .env("SQRIT_APP_CONFIG_CHILD", "1")
+        .status()
+        .unwrap();
 
-    assert!(!app.unwrap().app_config.hint_bar.enabled);
+    assert!(status.success());
 }
