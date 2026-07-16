@@ -1232,22 +1232,52 @@ impl App {
         }
     }
 
+    fn push_editor_span(&self, spans: &mut Vec<Span<'_>>, text: &str, offset: usize, style: Style) {
+        let Some(selected) = self.selected_statement.as_ref().map(|s| &s.range) else {
+            spans.push(Span::styled(text.to_string(), style));
+            return;
+        };
+        let end = offset + text.len();
+        let selected_start = selected.start.max(offset).min(end);
+        let selected_end = selected.end.max(offset).min(end);
+
+        if offset < selected_start {
+            spans.push(Span::styled(
+                text[..selected_start - offset].to_string(),
+                style,
+            ));
+        }
+        if selected_start < selected_end {
+            spans.push(Span::styled(
+                text[selected_start - offset..selected_end - offset].to_string(),
+                style.bg(self.theme.selection_bg),
+            ));
+        }
+        if selected_end < end {
+            spans.push(Span::styled(
+                text[selected_end - offset..].to_string(),
+                style,
+            ));
+        }
+    }
+
     fn highlighted_lines(&self) -> Vec<Line<'_>> {
         let text = self.editor.text();
         let tokens = tokenize(&text);
         let mut lines: Vec<Line<'_>> = Vec::new();
         let mut current_spans: Vec<Span<'_>> = Vec::new();
+        let mut offset = 0usize;
 
         for token in tokens {
+            let style = self.token_style(&token.kind);
             for (i, line_text) in token.text.split('\n').enumerate() {
                 if i > 0 {
                     lines.push(Line::from(std::mem::take(&mut current_spans)));
+                    offset += 1;
                 }
                 if !line_text.is_empty() {
-                    current_spans.push(Span::styled(
-                        line_text.to_string(),
-                        self.token_style(&token.kind),
-                    ));
+                    self.push_editor_span(&mut current_spans, line_text, offset, style);
+                    offset += line_text.len();
                 }
             }
         }
