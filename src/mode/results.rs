@@ -136,7 +136,7 @@ pub fn handle_key(key: KeyEvent, app: &mut App) {
             if app.results_state.has_next_page {
                 app.results_state.page_down();
                 if let Some(q) = app.last_query.clone() {
-                    app.queue_query(q, None);
+                    app.queue_query_page(q);
                 }
             }
         }
@@ -146,7 +146,7 @@ pub fn handle_key(key: KeyEvent, app: &mut App) {
             if app.results_state.page_offset > 0 {
                 app.results_state.page_up();
                 if let Some(q) = app.last_query.clone() {
-                    app.queue_query(q, None);
+                    app.queue_query_page(q);
                 }
             }
         }

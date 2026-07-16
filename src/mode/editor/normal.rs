@@ -118,11 +118,10 @@ pub fn handle_key(key: KeyEvent, app: &mut App) {
                         app.queue_query(query, Some(statement));
                     }
                     Ok(None) => {
-                        app.query_status = QueryStatus::Idle;
                         app.status_message = "no statement at cursor".to_string();
                     }
                     Err(error) => {
-                        app.query_status = QueryStatus::Error(error.to_string());
+                        app.status_message = error.to_string();
                     }
                 }
                 return;

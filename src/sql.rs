@@ -353,12 +353,14 @@ pub struct StatementRange {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StatementScanError {
     Unterminated(&'static str),
+    UnsafeCompoundDdl(&'static str),
 }
 
 impl std::fmt::Display for StatementScanError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Unterminated(kind) => write!(f, "unterminated {kind}"),
+            Self::UnsafeCompoundDdl(kind) => write!(f, "cannot safely scan {kind}"),
         }
     }
 }
@@ -378,15 +380,16 @@ pub fn statement_at_cursor(
     backend: DbType,
 ) -> Result<Option<StatementRange>, StatementScanError> {
     let kinds = classify(sql, &backend)?;
-    let mut ranges = candidate_ranges(sql, &kinds)
+    if let Some(kind) = unsafe_compound_ddl(sql, &kinds, &backend) {
+        return Err(StatementScanError::UnsafeCompoundDdl(kind));
+    }
+    let ranges = candidate_ranges(sql, &kinds)
         .into_iter()
         .filter_map(|range| trim_executable(sql, &kinds, range))
         .collect::<Vec<_>>();
     if ranges.is_empty() {
         return Ok(None);
     }
-    ranges.sort_by_key(|range| range.start);
-
     let cursor = cursor_byte_offset(sql, cursor);
     let index = ranges
         .iter()
@@ -400,15 +403,121 @@ pub fn statement_at_cursor(
     }))
 }
 
+fn unsafe_compound_ddl(sql: &str, kinds: &[ScanKind], backend: &DbType) -> Option<&'static str> {
+    let words = sql_words(sql, kinds);
+    let is_compound = |word: &str| {
+        ["PROCEDURE", "FUNCTION", "TRIGGER", "EVENT"]
+            .iter()
+            .any(|kind| word.eq_ignore_ascii_case(kind))
+    };
+
+    for (create, _) in words
+        .iter()
+        .enumerate()
+        .filter(|(_, word)| word.eq_ignore_ascii_case("CREATE"))
+    {
+        match backend {
+            DbType::Sqlite => {
+                let object = if words.get(create + 1).is_some_and(|word| {
+                    word.eq_ignore_ascii_case("TEMP") || word.eq_ignore_ascii_case("TEMPORARY")
+                }) {
+                    create + 2
+                } else {
+                    create + 1
+                };
+                if words
+                    .get(object)
+                    .is_some_and(|word| word.eq_ignore_ascii_case("TRIGGER"))
+                {
+                    return Some("SQLite trigger definition");
+                }
+            }
+            DbType::Mysql => {
+                let mut object = create + 1;
+                if words
+                    .get(object)
+                    .is_some_and(|word| word.eq_ignore_ascii_case("OR"))
+                    && words
+                        .get(object + 1)
+                        .is_some_and(|word| word.eq_ignore_ascii_case("REPLACE"))
+                {
+                    object += 2;
+                }
+                let object = if words
+                    .get(object)
+                    .is_some_and(|word| word.eq_ignore_ascii_case("DEFINER"))
+                {
+                    words
+                        .iter()
+                        .skip(object + 1)
+                        .take(6)
+                        .find(|word| is_compound(word) || word.eq_ignore_ascii_case("VIEW"))
+                } else {
+                    words.get(object)
+                };
+                if object.is_some_and(|word| is_compound(word)) {
+                    return Some("MySQL compound definition");
+                }
+            }
+            DbType::Postgres => return None,
+        }
+    }
+    None
+}
+
+fn sql_words<'a>(sql: &'a str, kinds: &[ScanKind]) -> Vec<&'a str> {
+    let bytes = sql.as_bytes();
+    let mut words = Vec::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        if kinds[i] != ScanKind::Sql || !(bytes[i].is_ascii_alphabetic() || bytes[i] == b'_') {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        i += 1;
+        while i < bytes.len()
+            && kinds[i] == ScanKind::Sql
+            && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_')
+        {
+            i += 1;
+        }
+        words.push(&sql[start..i]);
+    }
+    words
+}
+
 fn classify(sql: &str, backend: &DbType) -> Result<Vec<ScanKind>, StatementScanError> {
     let bytes = sql.as_bytes();
     let mut kinds = vec![ScanKind::Sql; bytes.len()];
     let mut i = 0;
     while i < bytes.len() {
         i = match bytes[i] {
-            b'\'' => consume_quote(bytes, &mut kinds, i, b'\'', "single-quoted string")?,
-            b'"' => consume_quote(bytes, &mut kinds, i, b'"', "double-quoted identifier")?,
-            b'`' => consume_quote(bytes, &mut kinds, i, b'`', "backtick identifier")?,
+            b'[' if matches!(backend, DbType::Sqlite) => consume_bracket(bytes, &mut kinds, i)?,
+            b'\'' => consume_quote(
+                bytes,
+                &mut kinds,
+                i,
+                b'\'',
+                "single-quoted string",
+                quote_uses_backslash(bytes, i, b'\'', backend),
+            )?,
+            b'"' => consume_quote(
+                bytes,
+                &mut kinds,
+                i,
+                b'"',
+                "double-quoted identifier",
+                quote_uses_backslash(bytes, i, b'"', backend),
+            )?,
+            b'`' => consume_quote(
+                bytes,
+                &mut kinds,
+                i,
+                b'`',
+                "backtick identifier",
+                quote_uses_backslash(bytes, i, b'`', backend),
+            )?,
             b'-' if bytes.get(i + 1) == Some(&b'-')
                 && (!matches!(backend, DbType::Mysql)
                     || bytes.get(i + 2).is_some_and(|byte| {
@@ -431,6 +540,35 @@ fn classify(sql: &str, backend: &DbType) -> Result<Vec<ScanKind>, StatementScanE
     Ok(kinds)
 }
 
+fn quote_uses_backslash(bytes: &[u8], start: usize, quote: u8, backend: &DbType) -> bool {
+    match backend {
+        DbType::Mysql => quote != b'`',
+        DbType::Postgres => {
+            quote == b'\''
+                && start > 0
+                && matches!(bytes[start - 1], b'e' | b'E')
+                && (start == 1
+                    || !(bytes[start - 2].is_ascii_alphanumeric()
+                        || bytes[start - 2] == b'_'
+                        || bytes[start - 2] >= 0x80))
+        }
+        DbType::Sqlite => false,
+    }
+}
+
+fn consume_bracket(
+    bytes: &[u8],
+    kinds: &mut [ScanKind],
+    start: usize,
+) -> Result<usize, StatementScanError> {
+    let Some(close) = bytes[start + 1..].iter().position(|byte| *byte == b']') else {
+        return Err(StatementScanError::Unterminated("bracketed identifier"));
+    };
+    let end = start + close + 2;
+    mark(kinds, start..end, ScanKind::Quoted);
+    Ok(end)
+}
+
 fn mark(kinds: &mut [ScanKind], range: Range<usize>, kind: ScanKind) {
     kinds[range].fill(kind);
 }
@@ -441,10 +579,11 @@ fn consume_quote(
     start: usize,
     quote: u8,
     label: &'static str,
+    backslash_escapes: bool,
 ) -> Result<usize, StatementScanError> {
     let mut i = start + 1;
     while i < bytes.len() {
-        if bytes[i] == b'\\' && i + 1 < bytes.len() {
+        if backslash_escapes && bytes[i] == b'\\' && i + 1 < bytes.len() {
             i += 2;
             continue;
         }

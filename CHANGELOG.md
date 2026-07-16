@@ -11,7 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - `gs` in Query Normal executes the statement under the cursor without changing whole-buffer `Enter` or `Ctrl+Enter` behavior.
-- Statement scanning honors backend-aware quotes, comments, backticks, and PostgreSQL dollar blocks; malformed protected regions execute nothing.
+- Statement scanning honors backend-aware quotes, SQLite brackets, comments, backticks, and PostgreSQL dollar blocks; malformed regions and recognized compound SQLite/MySQL definitions execute nothing.
 - The executed source range remains highlighted with the active theme's `selection_bg`, and query history stores only the SQL sent to the adapter.
 
 ## [0.3.2] - 2026-07-15

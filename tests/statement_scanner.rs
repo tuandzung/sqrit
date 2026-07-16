@@ -48,6 +48,22 @@ fn protected_regions_do_not_create_boundaries() {
 }
 
 #[test]
+fn sqlite_bracketed_identifier_cannot_expose_destructive_sql() {
+    let sql = "SELECT [safe; DROP TABLE users]; SELECT 2;";
+    assert_eq!(
+        selected(sql, (0, 18), DbType::Sqlite),
+        ("SELECT [safe; DROP TABLE users];".into(), 1, 2)
+    );
+}
+
+#[test]
+fn unterminated_sqlite_bracketed_identifier_fails_closed() {
+    let error =
+        statement_at_cursor("SELECT [safe; DROP TABLE users", (0, 18), DbType::Sqlite).unwrap_err();
+    assert_eq!(error.to_string(), "unterminated bracketed identifier");
+}
+
+#[test]
 fn postgres_dollar_blocks_and_nested_comments_are_protected() {
     let sql = "DO $$ BEGIN PERFORM ';';\n\nEND $$;\n/* outer /* inner ; */ end */ SELECT 2;";
     assert_eq!(
@@ -58,6 +74,48 @@ fn postgres_dollar_blocks_and_nested_comments_are_protected() {
         selected(sql, (3, 30), DbType::Postgres),
         ("/* outer /* inner ; */ end */ SELECT 2;".into(), 2, 2)
     );
+}
+
+#[test]
+fn sqlite_multi_action_trigger_fails_closed() {
+    let sql = "CREATE TRIGGER audit AFTER UPDATE ON users\nBEGIN\n  INSERT INTO log VALUES ('updated');\n  UPDATE stats SET n = n + 1;\nEND;\nSELECT 2;";
+    let error = statement_at_cursor(sql, (3, 4), DbType::Sqlite).unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        "cannot safely scan SQLite trigger definition"
+    );
+}
+
+#[test]
+fn mysql_compound_definitions_fail_closed() {
+    for sql in [
+        "CREATE PROCEDURE p() BEGIN SELECT 1; SELECT 2; END;",
+        "CREATE FUNCTION f() RETURNS INT BEGIN RETURN 1; END;",
+        "CREATE TRIGGER t BEFORE INSERT ON users FOR EACH ROW BEGIN SET @x = 1; SET @y = 2; END;",
+        "CREATE EVENT e DO BEGIN INSERT INTO log VALUES (1); INSERT INTO log VALUES (2); END;",
+    ] {
+        let error = statement_at_cursor(sql, (0, 40), DbType::Mysql).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "cannot safely scan MySQL compound definition"
+        );
+    }
+}
+
+#[test]
+fn compound_definition_after_safe_statement_still_fails_closed() {
+    for (sql, backend) in [
+        (
+            "SELECT 0; CREATE TRIGGER audit AFTER UPDATE ON users BEGIN INSERT INTO log VALUES (1); UPDATE stats SET n = n + 1; END;",
+            DbType::Sqlite,
+        ),
+        (
+            "SELECT 0; CREATE PROCEDURE p() BEGIN SELECT 1; SELECT 2; END;",
+            DbType::Mysql,
+        ),
+    ] {
+        assert!(statement_at_cursor(sql, (0, 55), backend).is_err());
+    }
 }
 
 #[test]
@@ -96,6 +154,61 @@ fn mysql_dash_dash_requires_following_whitespace_or_control() {
     assert_eq!(
         selected(sql, (0, 15), DbType::Mysql),
         ("SELECT 3;".into(), 2, 2)
+    );
+}
+
+#[test]
+fn sqlite_and_postgres_plain_strings_treat_terminal_backslash_literally() {
+    let sql = "SELECT 'path\\'; SELECT 2;";
+    for backend in [DbType::Sqlite, DbType::Postgres] {
+        assert_eq!(
+            selected(sql, (0, 4), backend),
+            ("SELECT 'path\\';".into(), 1, 2)
+        );
+    }
+}
+
+#[test]
+fn mysql_default_and_postgres_escape_strings_keep_escaped_quotes_protected() {
+    for (sql, backend) in [
+        ("SELECT 'it\\'s; safe'; SELECT 2;", DbType::Mysql),
+        ("SELECT E'it\\'s; safe'; SELECT 2;", DbType::Postgres),
+    ] {
+        let found = selected(sql, (0, 12), backend);
+        assert_eq!((found.1, found.2), (1, 2));
+    }
+}
+
+#[test]
+fn mysql_backtick_identifier_treats_terminal_backslash_literally() {
+    let sql = "SELECT `path\\`; SELECT 2;";
+    assert_eq!(
+        selected(sql, (0, 4), DbType::Mysql),
+        ("SELECT `path\\`;".into(), 1, 2)
+    );
+}
+
+#[test]
+fn doubled_quotes_keep_semicolons_protected() {
+    let sql = "SELECT 'it''s; safe', \"a\"\";b\"; SELECT 2;";
+    assert_eq!(
+        selected(sql, (0, 18), DbType::Sqlite),
+        ("SELECT 'it''s; safe', \"a\"\";b\";".into(), 1, 2)
+    );
+
+    let sql = "SELECT `a``;b`; SELECT 2;";
+    assert_eq!(
+        selected(sql, (0, 10), DbType::Mysql),
+        ("SELECT `a``;b`;".into(), 1, 2)
+    );
+}
+
+#[test]
+fn blank_line_inside_quoted_region_is_not_a_boundary() {
+    let sql = "SELECT 'one\n\n two'\n\nSELECT 2";
+    assert_eq!(
+        selected(sql, (1, 0), DbType::Sqlite),
+        ("SELECT 'one\n\n two'".into(), 1, 2)
     );
 }
 

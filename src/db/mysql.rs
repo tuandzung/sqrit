@@ -44,15 +44,6 @@ fn mysql_row_to_value(row: &sqlx::mysql::MySqlRow, i: usize) -> Value {
     })
 }
 
-fn is_query_returning_rows(sql: &str) -> bool {
-    let first_word = super::skip_leading_comments(sql)
-        .split(|c: char| !c.is_alphanumeric() && c != '_')
-        .next()
-        .unwrap_or("")
-        .to_uppercase();
-    matches!(first_word.as_str(), "SELECT" | "WITH" | "VALUES" | "TABLE")
-}
-
 pub struct MySqlAdapter {
     url: String,
     // Pool retained for schema introspection (list_columns) and as the
@@ -167,7 +158,7 @@ impl MySqlAdapter {
 }
 
 fn tx_keyword(sql: &str) -> Option<bool> {
-    let mut words = super::skip_leading_comments(sql)
+    let mut words = super::skip_leading_comments(sql, true)
         .split(|c: char| !c.is_alphanumeric() && c != '_')
         .filter(|s| !s.is_empty())
         .map(str::to_uppercase);
@@ -220,10 +211,10 @@ impl Database for MySqlAdapter {
     }
 
     async fn execute(&self, query: &str) -> anyhow::Result<QueryResult> {
-        if super::skip_leading_comments(query).is_empty() {
+        if super::skip_leading_comments(query, true).is_empty() {
             anyhow::bail!("query is empty");
         }
-        let is_select = is_query_returning_rows(query);
+        let is_select = super::is_query_returning_rows(query, true);
         let tx_transition = tx_keyword(query);
         let mut guard = self.exec_conn.lock().await;
         let conn = guard

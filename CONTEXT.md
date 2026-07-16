@@ -34,7 +34,7 @@ A schema object's category. Explorer uses it to group objects, decide whether `s
 ### Query
 SQL text edited in the query pane. `Enter` in Normal mode and `Ctrl+Enter` in Insert mode execute the whole buffer. `gs` in Normal mode executes only the statement under the cursor and records only that source slice in history.
 
-Statement boundaries use every real semicolon when the buffer contains one; otherwise blank lines split statements. Quotes, quoted identifiers, comments, backticks, and PostgreSQL dollar blocks protect internal delimiters. A malformed protected region fails closed. The executed statement keeps a `selection_bg` wash until cursor movement, an edit, paste, or another execution.
+Statement boundaries use every real semicolon when the buffer contains one; otherwise blank lines split statements. Quotes, SQLite bracketed identifiers, comments, backticks, and PostgreSQL dollar blocks protect internal delimiters with backend-aware backslash rules. A malformed protected region fails closed. Recognized SQLite trigger and MySQL procedure/function/trigger/event definitions also fail closed because their inner semicolons cannot be separated safely without a block parser. Fresh execution resets result pagination; `PgUp` and `PgDn` preserve their chosen offset. The executed statement keeps a `selection_bg` wash until cursor movement, an edit, paste, or another execution.
 
 ### Results
 Output from query execution. Rendered as a paginated, scrollable table.

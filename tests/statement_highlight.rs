@@ -1,7 +1,7 @@
 mod common;
 
 use ratatui::backend::TestBackend;
-use ratatui::style::Color;
+use ratatui::style::{Color, Modifier};
 use ratatui::Terminal;
 use sqrit::app::FocusedPane;
 use sqrit::sql::statement_at_cursor;
@@ -38,6 +38,7 @@ fn highlight_preserves_keyword_foreground() {
     let cell = &terminal.backend().buffer()[(11, 1)];
     assert_eq!(cell.bg, selection_bg);
     assert_eq!(cell.fg, keyword);
+    assert!(cell.modifier.contains(Modifier::BOLD));
 }
 
 #[test]
@@ -73,6 +74,26 @@ fn cursor_movement_clears_highlight() {
 }
 
 #[test]
+fn editing_selected_statement_clears_highlight_and_feedback() {
+    let mut app = common::test_app();
+    app.active_connection = Some("test".to_string());
+    app.editor.insert_str("SELECT 1; SELECT 2;");
+    for code in [
+        crossterm::event::KeyCode::Char('g'),
+        crossterm::event::KeyCode::Char('s'),
+        crossterm::event::KeyCode::Char('i'),
+        crossterm::event::KeyCode::Char('x'),
+    ] {
+        app.handle_key_event(crossterm::event::KeyEvent::new(
+            code,
+            crossterm::event::KeyModifiers::NONE,
+        ));
+    }
+    assert!(app.selected_statement.is_none());
+    assert!(app.status_message.is_empty());
+}
+
+#[test]
 fn success_and_error_results_keep_the_selected_highlight() {
     let mut app = common::test_app();
     app.editor.insert_str("SELECT 1; SELECT 2;");
@@ -84,6 +105,7 @@ fn success_and_error_results_keep_the_selected_highlight() {
         sqrit::app::QueryStatus::Success,
         sqrit::app::QueryStatus::Error("database error".into()),
     ] {
+        app.status_message = "running statement 2/2".to_string();
         app.async_tx
             .send(sqrit::app::AsyncResult::QueryDone {
                 query_id: 4,
@@ -94,5 +116,6 @@ fn success_and_error_results_keep_the_selected_highlight() {
             .unwrap();
         app.drain_async_results();
         assert!(app.selected_statement.is_some());
+        assert!(app.status_message.is_empty());
     }
 }

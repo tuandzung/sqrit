@@ -209,6 +209,7 @@ impl App {
                     if query_id != self.query_id {
                         continue;
                     }
+                    self.clear_statement_status();
                     self.record_history(&status, result.as_ref());
                     self.query_status = status;
                     self.results_state.has_next_page = has_next_page;
@@ -340,7 +341,15 @@ impl App {
                 || text_before.as_deref() != Some(self.editor.text().as_str()))
         {
             self.selected_statement = None;
+            self.clear_statement_status();
         }
+    }
+
+    pub fn handle_paste_event(&mut self, text: &str) {
+        self.selected_statement = None;
+        self.clear_statement_status();
+        let mode = self.mode;
+        mode.handler().handle_paste(text, self);
     }
 
     /// Drop the active DB handle, clear cached schema + connection label,
@@ -401,8 +410,24 @@ impl App {
     }
 
     pub fn queue_query(&mut self, query: String, statement: Option<StatementRange>) {
+        self.results_state.reset_pagination();
+        if statement.is_none() {
+            self.clear_statement_status();
+        }
         self.selected_statement = statement;
         self.pending_query = Some(query);
+    }
+
+    pub fn queue_query_page(&mut self, query: String) {
+        self.clear_statement_status();
+        self.selected_statement = None;
+        self.pending_query = Some(query);
+    }
+
+    fn clear_statement_status(&mut self) {
+        if self.status_message.starts_with("running statement ") {
+            self.status_message.clear();
+        }
     }
 
     pub fn execute_pending(&mut self) {
@@ -410,6 +435,9 @@ impl App {
             Some(q) => q,
             None => return,
         };
+        if self.selected_statement.is_none() {
+            self.clear_statement_status();
+        }
 
         self.query_id += 1;
         let query_id = self.query_id;
@@ -417,7 +445,12 @@ impl App {
         self.query_started_at = Some(Instant::now());
         self.last_query = Some(query.clone());
 
-        let is_select = query.trim_start().to_uppercase().starts_with("SELECT");
+        let mysql_hash_comments = self
+            .active_connection
+            .as_ref()
+            .and_then(|name| self.config.get_connection(name))
+            .is_some_and(|connection| matches!(connection.db_type, crate::config::DbType::Mysql));
+        let returns_rows = crate::db::is_query_returning_rows(&query, mysql_hash_comments);
 
         if let Some(ref db) = self.db {
             let db: Box<dyn Database> = db.clone_box();
@@ -427,7 +460,7 @@ impl App {
             let tx = self.async_tx.clone();
 
             tokio::spawn(async move {
-                let result = if is_select {
+                let result = if returns_rows {
                     db.execute_paginated(&query, offset, limit).await
                 } else {
                     db.execute(&query).await
@@ -435,7 +468,7 @@ impl App {
 
                 let msg = match result {
                     Ok(mut r) => {
-                        let has_next_page = if is_select {
+                        let has_next_page = if returns_rows {
                             if r.rows.len() > page_size {
                                 r.rows.truncate(page_size);
                                 true
@@ -511,9 +544,7 @@ impl App {
                         // V9: paste events bypass the space-prefix
                         // dispatcher — a pasted leading space must not
                         // arm the command palette.
-                        self.selected_statement = None;
-                        let mode = self.mode;
-                        mode.handler().handle_paste(&text, self);
+                        self.handle_paste_event(&text);
                     }
                     _ => {}
                 }

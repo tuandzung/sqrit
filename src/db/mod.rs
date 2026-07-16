@@ -12,7 +12,7 @@ use types::{ColumnInfo, QueryResult, SchemaInfo};
 /// return the remaining SQL with leading whitespace also trimmed. Shared by
 /// adapter helpers that need to identify the first real keyword
 /// (e.g. SELECT vs DDL, BEGIN/COMMIT tracking).
-pub(crate) fn skip_leading_comments(sql: &str) -> &str {
+pub(crate) fn skip_leading_comments(sql: &str, mysql_hash_comments: bool) -> &str {
     let mut rest = sql;
     loop {
         let trimmed = rest.trim_start();
@@ -20,10 +20,26 @@ pub(crate) fn skip_leading_comments(sql: &str) -> &str {
             rest = stripped.find('\n').map_or("", |i| &stripped[i + 1..]);
         } else if let Some(stripped) = trimmed.strip_prefix("/*") {
             rest = stripped.find("*/").map_or("", |i| &stripped[i + 2..]);
+        } else if mysql_hash_comments {
+            if let Some(stripped) = trimmed.strip_prefix('#') {
+                rest = stripped.find('\n').map_or("", |i| &stripped[i + 1..]);
+                continue;
+            }
+            return trimmed;
         } else {
             return trimmed;
         }
     }
+}
+
+pub(crate) fn is_query_returning_rows(sql: &str, mysql_hash_comments: bool) -> bool {
+    let first_word = skip_leading_comments(sql, mysql_hash_comments)
+        .split(|c: char| !c.is_alphanumeric() && c != '_')
+        .next()
+        .unwrap_or("");
+    ["SELECT", "WITH", "VALUES", "TABLE"]
+        .iter()
+        .any(|keyword| first_word.eq_ignore_ascii_case(keyword))
 }
 
 #[async_trait]
@@ -58,4 +74,30 @@ pub trait Database: Send + Sync {
     }
 
     fn clone_box(&self) -> Box<dyn Database>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_query_returning_rows;
+
+    #[test]
+    fn row_returning_detection_skips_comments_and_covers_all_keywords() {
+        for sql in [
+            "SELECT 1",
+            "WITH q AS (SELECT 1) SELECT * FROM q",
+            "VALUES (1)",
+            "TABLE users",
+            "-- comment\n/* comment */ SELECT 1",
+        ] {
+            assert!(is_query_returning_rows(sql, false), "{sql}");
+        }
+        assert!(!is_query_returning_rows("INSERT INTO t VALUES (1)", false));
+    }
+
+    #[test]
+    fn mysql_hash_comments_are_skipped_only_for_mysql() {
+        let sql = "# comment\nSELECT 1";
+        assert!(is_query_returning_rows(sql, true));
+        assert!(!is_query_returning_rows(sql, false));
+    }
 }
