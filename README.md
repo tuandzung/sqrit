@@ -9,6 +9,7 @@ The lazygit of SQL databases. Connect, query, browse — from the terminal.
 - **SQL highlighting**: keywords, types, strings, comments, numbers
 - **3-pane TUI**: Explorer sidebar, Query editor, Results table
 - **Schema browser**: tables, views, materialized views, indexes, triggers, functions, procedures, sequences — under per-namespace collapsible groups
+- **Statement execution**: `gs` runs the statement under the cursor; semicolon-aware boundaries fall back to blank lines, and the executed range stays highlighted
 - **Connection picker**: filter by name, select to connect
 - **Non-blocking I/O**: async DB calls via Tokio — UI never freezes during queries or schema loads
 - **Themes**: five bundled palettes (Rose Pine, Tokyo Night, Nord, Gruvbox, Catppuccin Macchiato), live picker via `<space>t`, plus any user TOML in `~/.sqrit/themes/`
@@ -72,6 +73,7 @@ Press `?` in Query Normal, Explorer, or Results for a live help overlay listing 
 | `p` | Paste below |
 | `u` | Undo |
 | Enter | Execute query |
+| `gs` | Execute the statement under the cursor |
 
 #### Query Editor — Insert Mode
 | Key | Action |
