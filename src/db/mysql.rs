@@ -220,6 +220,9 @@ impl Database for MySqlAdapter {
     }
 
     async fn execute(&self, query: &str) -> anyhow::Result<QueryResult> {
+        if super::skip_leading_comments(query).is_empty() {
+            anyhow::bail!("query is empty");
+        }
         let is_select = is_query_returning_rows(query);
         let tx_transition = tx_keyword(query);
         let mut guard = self.exec_conn.lock().await;
