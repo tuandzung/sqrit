@@ -421,7 +421,7 @@ fn classify(sql: &str, backend: &DbType) -> Result<Vec<ScanKind>, StatementScanE
             b'/' if bytes.get(i + 1) == Some(&b'*') => {
                 consume_block_comment(bytes, &mut kinds, i, matches!(backend, DbType::Postgres))?
             }
-            b'$' if matches!(backend, DbType::Postgres) => match dollar_delimiter(sql, i) {
+            b'$' if matches!(backend, DbType::Postgres) => match dollar_delimiter(bytes, i) {
                 Some(delimiter) => consume_dollar(bytes, &mut kinds, i, delimiter)?,
                 None => i + 1,
             },
@@ -498,31 +498,36 @@ fn consume_block_comment(
     Err(StatementScanError::Unterminated("block comment"))
 }
 
-fn dollar_delimiter(sql: &str, start: usize) -> Option<&[u8]> {
-    if sql[..start]
-        .chars()
-        .next_back()
-        .is_some_and(|ch| ch.is_alphanumeric() || ch == '_' || ch == '$')
-    {
-        return None;
-    }
-
-    let mut chars = sql[start + 1..].char_indices();
-    let (_, first) = chars.next()?;
-    if first == '$' {
-        return Some(&sql.as_bytes()[start..start + 2]);
-    }
-    if !(first.is_alphabetic() || first == '_') {
-        return None;
-    }
-
-    for (offset, ch) in chars {
-        if ch == '$' {
-            return Some(&sql.as_bytes()[start..start + offset + 2]);
-        }
-        if !(ch.is_alphanumeric() || ch == '_') {
+fn dollar_delimiter(bytes: &[u8], start: usize) -> Option<&[u8]> {
+    if start > 0 {
+        let previous = bytes[start - 1];
+        if previous.is_ascii_alphanumeric()
+            || previous == b'_'
+            || previous == b'$'
+            || previous >= 0x80
+        {
             return None;
         }
+    }
+
+    let mut i = start + 1;
+    if bytes.get(i) == Some(&b'$') {
+        return Some(&bytes[start..=i]);
+    }
+    let first = *bytes.get(i)?;
+    if !(first.is_ascii_alphabetic() || first == b'_' || first >= 0x80) {
+        return None;
+    }
+
+    i += 1;
+    while let Some(byte) = bytes.get(i) {
+        if *byte == b'$' {
+            return Some(&bytes[start..=i]);
+        }
+        if !(byte.is_ascii_alphanumeric() || *byte == b'_' || *byte >= 0x80) {
+            return None;
+        }
+        i += 1;
     }
     None
 }
@@ -607,10 +612,10 @@ fn cursor_byte_offset(sql: &str, (target_row, target_col): (usize, usize)) -> us
     for (row, line) in sql.split_inclusive('\n').enumerate() {
         if row == target_row {
             let content = line.strip_suffix('\n').unwrap_or(line);
-            let mut col = target_col.min(content.len());
-            while col > 0 && !content.is_char_boundary(col) {
-                col -= 1;
-            }
+            let col = content
+                .char_indices()
+                .nth(target_col)
+                .map_or(content.len(), |(offset, _)| offset);
             return offset + col;
         }
         offset += line.len();

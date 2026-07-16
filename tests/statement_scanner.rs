@@ -122,6 +122,37 @@ fn postgres_dollar_tags_accept_non_ascii_identifiers() {
 }
 
 #[test]
+fn unicode_cursor_columns_select_the_following_statement() {
+    let sql = "DROP TABLE é; SELECT 1;";
+    assert_eq!(
+        selected(sql, (0, 14), DbType::Sqlite),
+        ("SELECT 1;".into(), 2, 2)
+    );
+}
+
+#[test]
+fn postgres_dollar_tags_accept_non_alphabetic_high_bytes() {
+    let sql = "DO $💾$ BEGIN\nPERFORM 1;\nEND $💾$;\nSELECT 2;";
+    assert_eq!(
+        selected(sql, (1, 2), DbType::Postgres),
+        ("DO $💾$ BEGIN\nPERFORM 1;\nEND $💾$;".into(), 1, 2)
+    );
+    assert_eq!(
+        selected(sql, (3, 2), DbType::Postgres),
+        ("SELECT 2;".into(), 2, 2)
+    );
+}
+
+#[test]
+fn postgres_dollar_opener_rejects_high_byte_identifier_prefix() {
+    let sql = "SELECT 💾$tag$; SELECT 2;";
+    assert_eq!(
+        selected(sql, (0, 2), DbType::Postgres),
+        ("SELECT 💾$tag$;".into(), 1, 2)
+    );
+}
+
+#[test]
 fn separator_and_surrounding_space_choose_the_documented_neighbor() {
     let sql = "  SELECT 1;   SELECT 2;   ";
     assert_eq!(selected(sql, (0, 0), DbType::Sqlite).0, "SELECT 1;");
