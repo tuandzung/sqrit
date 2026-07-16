@@ -1,5 +1,5 @@
 use sqrit::autocomplete::{current_word_prefix, suggest, AutocompleteState};
-use sqrit::db::types::{ColumnInfo, SchemaInfo, TableInfo, ViewInfo};
+use sqrit::db::types::{ColumnInfo, Namespace, SchemaInfo, TableObject, ViewObject};
 
 #[test]
 fn open_shows_popup_with_candidates_and_selects_first() {
@@ -194,18 +194,19 @@ fn suggest_empty_prefix_returns_nothing() {
 
 #[test]
 fn suggest_includes_table_names_from_schema() {
+    let mut public = Namespace::empty("public");
+    public.tables = vec![
+        TableObject {
+            name: "users".into(),
+            columns: vec![],
+        },
+        TableObject {
+            name: "orders".into(),
+            columns: vec![],
+        },
+    ];
     let schema = SchemaInfo {
-        tables: vec![
-            TableInfo {
-                name: "users".into(),
-                columns: vec![],
-            },
-            TableInfo {
-                name: "orders".into(),
-                columns: vec![],
-            },
-        ],
-        views: vec![],
+        namespaces: vec![public],
     };
     let results = suggest("us", Some(&schema));
     assert!(results.contains(&"users".to_string()));
@@ -214,70 +215,102 @@ fn suggest_includes_table_names_from_schema() {
 
 #[test]
 fn suggest_includes_view_names_from_schema() {
+    let mut analytics = Namespace::empty("analytics");
+    analytics.views.push(ViewObject {
+        name: "active_users".into(),
+        columns: vec![],
+    });
     let schema = SchemaInfo {
-        tables: vec![],
-        views: vec![ViewInfo {
-            name: "active_users".into(),
-            columns: vec![],
-        }],
+        namespaces: vec![Namespace::empty("public"), analytics],
     };
     let results = suggest("act", Some(&schema));
     assert!(results.contains(&"active_users".to_string()));
 }
 
 #[test]
-fn suggest_includes_column_names_from_all_tables() {
+fn suggest_includes_columns_from_all_namespaces() {
+    let mut public = Namespace::empty("public");
+    public.tables.push(TableObject {
+        name: "users".into(),
+        columns: vec![ColumnInfo {
+            name: "email".into(),
+            data_type: "TEXT".into(),
+            nullable: false,
+            is_primary_key: false,
+        }],
+    });
+    let mut analytics = Namespace::empty("analytics");
+    analytics.tables.push(TableObject {
+        name: "orders".into(),
+        columns: vec![ColumnInfo {
+            name: "order_id".into(),
+            data_type: "INTEGER".into(),
+            nullable: false,
+            is_primary_key: true,
+        }],
+    });
     let schema = SchemaInfo {
-        tables: vec![
-            TableInfo {
-                name: "users".into(),
-                columns: vec![
-                    ColumnInfo {
-                        name: "id".into(),
-                        data_type: "INTEGER".into(),
-                        nullable: false,
-                        is_primary_key: true,
-                    },
-                    ColumnInfo {
-                        name: "email".into(),
-                        data_type: "TEXT".into(),
-                        nullable: false,
-                        is_primary_key: false,
-                    },
-                ],
-            },
-            TableInfo {
-                name: "orders".into(),
-                columns: vec![ColumnInfo {
-                    name: "order_id".into(),
-                    data_type: "INTEGER".into(),
-                    nullable: false,
-                    is_primary_key: true,
-                }],
-            },
-        ],
-        views: vec![],
+        namespaces: vec![public, analytics],
     };
     let results = suggest("em", Some(&schema));
     assert!(results.contains(&"email".to_string()));
 }
 
 #[test]
-fn suggest_deduplicates_column_and_keyword() {
-    // "IN" is both a keyword and a column prefix — keyword appears once
-    let schema = SchemaInfo {
-        tables: vec![TableInfo {
-            name: "t".into(),
-            columns: vec![ColumnInfo {
-                name: "insert_time".into(),
-                data_type: "TEXT".into(),
-                nullable: false,
-                is_primary_key: false,
-            }],
+fn suggest_includes_materialized_views() {
+    let mut analytics = Namespace::empty("analytics");
+    analytics.materialized_views.push(ViewObject {
+        name: "monthly_sales".into(),
+        columns: vec![ColumnInfo {
+            name: "month_total".into(),
+            data_type: "NUMERIC".into(),
+            nullable: true,
+            is_primary_key: false,
         }],
-        views: vec![],
+    });
+    let schema = SchemaInfo {
+        namespaces: vec![analytics],
     };
-    let results = suggest("in", Some(&schema));
-    let count = results.iter().filter(|r| *r == "insert_time").count();
+
+    assert!(suggest("month", Some(&schema)).contains(&"monthly_sales".to_string()));
+    assert!(suggest("month_t", Some(&schema)).contains(&"month_total".to_string()));
+}
+
+#[test]
+fn suggest_deduplicates_schema_candidates_across_namespaces() {
+    let mut public = Namespace::empty("public");
+    public.tables.push(TableObject {
+        name: "shared".into(),
+        columns: vec![ColumnInfo {
+            name: "shared_id".into(),
+            data_type: "INTEGER".into(),
+            nullable: false,
+            is_primary_key: true,
+        }],
+    });
+    let mut analytics = Namespace::empty("analytics");
+    analytics.views.push(ViewObject {
+        name: "shared".into(),
+        columns: vec![ColumnInfo {
+            name: "shared_id".into(),
+            data_type: "INTEGER".into(),
+            nullable: false,
+            is_primary_key: false,
+        }],
+    });
+    let schema = SchemaInfo {
+        namespaces: vec![public, analytics],
+    };
+
+    let results = suggest("sha", Some(&schema));
+    let count = results
+        .iter()
+        .filter(|result| result.as_str() == "shared")
+        .count();
     assert_eq!(count, 1);
+    let column_count = results
+        .iter()
+        .filter(|result| result.as_str() == "shared_id")
+        .count();
+    assert_eq!(column_count, 1);
 }

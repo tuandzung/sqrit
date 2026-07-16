@@ -86,20 +86,107 @@ pub struct ColumnInfo {
 
 #[derive(Debug, Clone)]
 pub struct SchemaInfo {
-    pub tables: Vec<TableInfo>,
-    pub views: Vec<ViewInfo>,
+    pub namespaces: Vec<Namespace>,
 }
 
 #[derive(Debug, Clone)]
-pub struct TableInfo {
+pub struct Namespace {
+    /// PostgreSQL schema, MySQL database, or an empty string for SQLite.
+    pub name: String,
+    pub tables: Vec<TableObject>,
+    pub views: Vec<ViewObject>,
+    pub materialized_views: Vec<ViewObject>,
+    pub indexes: Vec<IndexObject>,
+    pub triggers: Vec<TriggerObject>,
+    pub functions: Vec<RoutineObject>,
+    pub procedures: Vec<RoutineObject>,
+    pub sequences: Vec<SequenceObject>,
+}
+
+impl Namespace {
+    pub fn empty(name: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            tables: vec![],
+            views: vec![],
+            materialized_views: vec![],
+            indexes: vec![],
+            triggers: vec![],
+            functions: vec![],
+            procedures: vec![],
+            sequences: vec![],
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct TableObject {
     pub name: String,
     pub columns: Vec<ColumnInfo>,
 }
 
 #[derive(Debug, Clone)]
-pub struct ViewInfo {
+pub struct ViewObject {
     pub name: String,
     pub columns: Vec<ColumnInfo>,
+}
+
+#[derive(Debug, Clone)]
+pub struct IndexObject {
+    pub name: String,
+    pub table: String,
+    pub unique: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct TriggerObject {
+    pub name: String,
+    pub table: String,
+    /// Adapter-specific event text, such as `INSERT` or `BEFORE UPDATE`.
+    pub event: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct RoutineObject {
+    pub name: String,
+    pub return_type: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SequenceObject {
+    pub name: String,
+    pub last_value: Option<i64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ObjectKind {
+    Table,
+    View,
+    MaterializedView,
+    Index,
+    Trigger,
+    Function,
+    Procedure,
+    Sequence,
+}
+
+impl ObjectKind {
+    pub fn group_label(self) -> &'static str {
+        match self {
+            Self::Table => "Tables",
+            Self::View => "Views",
+            Self::MaterializedView => "Materialized Views",
+            Self::Index => "Indexes",
+            Self::Trigger => "Triggers",
+            Self::Function => "Functions",
+            Self::Procedure => "Procedures",
+            Self::Sequence => "Sequences",
+        }
+    }
+
+    pub fn supports_select_star(self) -> bool {
+        matches!(self, Self::Table | Self::View | Self::MaterializedView)
+    }
 }
 
 pub type TableRow = Row;

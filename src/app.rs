@@ -219,7 +219,7 @@ impl App {
                 AsyncResult::Connected { db, schema } => {
                     self.db = Some(db);
                     if let Some(s) = schema {
-                        self.explorer_state.schema = Some(s);
+                        self.explorer_state.set_schema(s);
                     }
                 }
                 AsyncResult::ConnectFailed(e) => {
@@ -898,24 +898,42 @@ impl App {
             .take(visible_rows)
             .map(|(i, item)| {
                 let display = match item {
-                    crate::explorer::TreeItem::Table { name, expanded } => {
-                        let arrow = if *expanded { 'v' } else { '>' };
-                        format!("{} {}", arrow, name)
+                    crate::explorer::TreeItem::Namespace { name, expanded } => format!(
+                        "{} {}",
+                        if *expanded { "▾" } else { "▸" },
+                        if name.is_empty() { "(default)" } else { name }
+                    ),
+                    crate::explorer::TreeItem::Group {
+                        kind,
+                        expanded,
+                        count,
+                        ..
+                    } => format!(
+                        "  {} {} ({})",
+                        if *expanded { "▾" } else { "▸" },
+                        kind.group_label(),
+                        count
+                    ),
+                    crate::explorer::TreeItem::Object {
+                        kind,
+                        name,
+                        expanded,
+                        ..
+                    } => {
+                        let bullet = if kind.supports_select_star() {
+                            if *expanded {
+                                "▾"
+                            } else {
+                                "▸"
+                            }
+                        } else {
+                            "•"
+                        };
+                        format!("    {bullet} {name}")
                     }
                     crate::explorer::TreeItem::Column {
                         name, data_type, ..
-                    } => {
-                        format!("  {} ({})", name, data_type)
-                    }
-                    crate::explorer::TreeItem::View { name, expanded } => {
-                        let arrow = if *expanded { 'v' } else { '>' };
-                        format!("{} {}", arrow, name)
-                    }
-                    crate::explorer::TreeItem::ViewColumn {
-                        name, data_type, ..
-                    } => {
-                        format!("  {} ({})", name, data_type)
-                    }
+                    } => format!("        {name} {data_type}"),
                 };
                 let style = if i == selected {
                     Style::default().bg(self.theme.selection_bg)

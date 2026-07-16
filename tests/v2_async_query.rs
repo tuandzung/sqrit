@@ -173,6 +173,11 @@ async fn connect_and_schema_load_via_async_task() {
     // Replace with fresh unconnected adapter pointing at same file (simulates picker)
     app.db = Some(Box::new(sqrit::db::sqlite::SqliteAdapter::new(&path)));
     app.pending_schema_load = true;
+    app.explorer_state
+        .expanded
+        .insert(sqrit::explorer::NodeKey::Namespace("stale".to_string()));
+    app.explorer_state.selected = 4;
+    app.explorer_state.scroll_offset = 2;
 
     spawn_connect_and_schema(&mut app);
 
@@ -181,7 +186,16 @@ async fn connect_and_schema_load_via_async_task() {
     // Adapter should be connected (replaced in app.db)
     assert!(app.explorer_state.schema.is_some());
     let schema = app.explorer_state.schema.as_ref().unwrap();
-    assert!(schema.tables.iter().any(|t| t.name == "test_v2"));
+    assert!(schema.namespaces[0]
+        .tables
+        .iter()
+        .any(|table| table.name == "test_v2"));
+    assert_eq!(app.explorer_state.selected, 0);
+    assert_eq!(app.explorer_state.scroll_offset, 0);
+    assert_eq!(
+        app.explorer_state.expanded,
+        std::collections::HashSet::from([sqrit::explorer::NodeKey::Namespace(String::new())])
+    );
 
     // Query execution should work with the connected adapter
     app.pending_query = Some("SELECT 1 AS val".to_string());

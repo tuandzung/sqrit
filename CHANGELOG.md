@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-07-15
+
+### Added
+
+- Namespace-aware schema browser with collapsible, counted object-kind groups under PostgreSQL schemas, the connected MySQL database, or SQLite's implicit namespace. SQLite shows tables, views, indexes, and triggers; PostgreSQL also shows materialized views, functions, procedures, and sequences; MySQL also shows functions and procedures. Empty groups are hidden, and a lone namespace is omitted from the tree.
+- ADR 8: namespace-aware introspection.
+- Invariant V11 in `CLAUDE.md`.
+- Per-adapter identifier quoting helpers in `src/db/quote.rs`.
+
+### Changed
+
+- `Database::schema_info()` now returns namespace-rooted `SchemaInfo { namespaces: Vec<Namespace> }`. PostgreSQL filters `pg_catalog`, `information_schema`, `pg_toast`, `pg_temp_*`, and `pg_toast_temp_*`; MySQL introspects only the database returned by `DATABASE()`. `ExplorerState::set_schema()` installs new schema data and resets tree state.
+- `s` in Explorer now generates a qualified, adapter-quoted `SELECT * FROM <namespace>.<object> LIMIT 100` for tables, views, and materialized views. Other object kinds leave the query unchanged and report a status message.
+
 ## [0.3.1] - 2026-07-15
 
 ### Added

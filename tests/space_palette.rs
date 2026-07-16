@@ -71,10 +71,7 @@ fn space_x_disconnects_and_returns_to_picker() {
     use sqrit::db::types::SchemaInfo;
     let mut app = common::test_app();
     app.active_connection = Some("test".to_string());
-    app.explorer_state.schema = Some(SchemaInfo {
-        tables: vec![],
-        views: vec![],
-    });
+    app.explorer_state.schema = Some(SchemaInfo { namespaces: vec![] });
     assert!(app.db.is_some());
 
     press(&mut app, &[KeyCode::Char(' '), KeyCode::Char('x')]);

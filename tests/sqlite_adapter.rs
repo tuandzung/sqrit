@@ -170,12 +170,14 @@ async fn schema_info_returns_tables_and_views() {
         .unwrap();
 
     let info = adapter.schema_info().await.unwrap();
-    assert_eq!(info.tables.len(), 1);
-    assert_eq!(info.tables[0].name, "users");
-    assert_eq!(info.tables[0].columns.len(), 3);
-    assert_eq!(info.views.len(), 1);
-    assert_eq!(info.views[0].name, "all_users");
-    assert_eq!(info.views[0].columns.len(), 2);
+    assert_eq!(info.namespaces.len(), 1);
+    let namespace = &info.namespaces[0];
+    assert_eq!(namespace.tables.len(), 1);
+    assert_eq!(namespace.tables[0].name, "users");
+    assert_eq!(namespace.tables[0].columns.len(), 3);
+    assert_eq!(namespace.views.len(), 1);
+    assert_eq!(namespace.views[0].name, "all_users");
+    assert_eq!(namespace.views[0].columns.len(), 2);
 }
 
 // #10 disconnect — subsequent execute fails

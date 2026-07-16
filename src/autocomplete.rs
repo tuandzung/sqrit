@@ -37,33 +37,42 @@ pub fn suggest(prefix: &str, schema: Option<&crate::db::types::SchemaInfo>) -> V
     }
 
     if let Some(schema) = schema {
-        add_schema_items(
-            &schema
-                .tables
-                .iter()
-                .map(|t| (t.name.as_str(), t.columns.as_slice()))
-                .collect::<Vec<_>>(),
-            prefix,
-            &mut seen,
-            &mut results,
-        );
-        add_schema_items(
-            &schema
-                .views
-                .iter()
-                .map(|v| (v.name.as_str(), v.columns.as_slice()))
-                .collect::<Vec<_>>(),
-            prefix,
-            &mut seen,
-            &mut results,
-        );
+        for namespace in &schema.namespaces {
+            add_schema_items(
+                namespace
+                    .tables
+                    .iter()
+                    .map(|table| (table.name.as_str(), table.columns.as_slice())),
+                prefix,
+                &mut seen,
+                &mut results,
+            );
+            add_schema_items(
+                namespace
+                    .views
+                    .iter()
+                    .map(|view| (view.name.as_str(), view.columns.as_slice())),
+                prefix,
+                &mut seen,
+                &mut results,
+            );
+            add_schema_items(
+                namespace
+                    .materialized_views
+                    .iter()
+                    .map(|view| (view.name.as_str(), view.columns.as_slice())),
+                prefix,
+                &mut seen,
+                &mut results,
+            );
+        }
     }
 
     results
 }
 
 fn add_schema_items<'a>(
-    items: &[(&'a str, &'a [crate::db::types::ColumnInfo])],
+    items: impl IntoIterator<Item = (&'a str, &'a [crate::db::types::ColumnInfo])>,
     prefix: &str,
     seen: &mut std::collections::HashSet<String>,
     results: &mut Vec<String>,
@@ -72,7 +81,7 @@ fn add_schema_items<'a>(
         if prefix_matches(name, prefix) && seen.insert(name.to_string()) {
             results.push(name.to_string());
         }
-        for col in *columns {
+        for col in columns {
             if prefix_matches(&col.name, prefix) && seen.insert(col.name.clone()) {
                 results.push(col.name.clone());
             }

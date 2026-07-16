@@ -10,11 +10,16 @@
 //!
 //! Paste the output back so we can pick the right production fix.
 
-use arboard::{Clipboard, SetExtLinux};
+use arboard::Clipboard;
+#[cfg(target_os = "linux")]
+use arboard::SetExtLinux;
 use std::process::{Command, Stdio};
+#[cfg(target_os = "linux")]
 use std::sync::mpsc;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+#[cfg(target_os = "linux")]
+use std::time::Instant;
 
 fn env_dump() {
     for k in [
@@ -90,6 +95,7 @@ fn variant_b_long_lived(sentinel: &str) -> Clipboard {
     clip
 }
 
+#[cfg(target_os = "linux")]
 fn variant_c_set_wait_threaded(sentinel: &str) {
     // arboard's documented Linux-persistence path: `.set().wait().text(s)`
     // blocks until the selection is overwritten. Wrap in a thread so the
@@ -109,6 +115,7 @@ fn variant_c_set_wait_threaded(sentinel: &str) {
     check(sentinel, "C set-wait-thread");
 }
 
+#[cfg(target_os = "linux")]
 fn variant_c_wait_until_threaded(sentinel: &str) {
     // Same shape as C but bounded via `wait_until` so the thread cannot
     // outlive the program. If wait_until works on the user's compositor
@@ -157,7 +164,9 @@ fn main() {
 
     variant_a_drop_immediately("sqrit-clip-A-7f3e");
     let _hold_b = variant_b_long_lived("sqrit-clip-B-7f3e");
+    #[cfg(target_os = "linux")]
     variant_c_set_wait_threaded("sqrit-clip-C-7f3e");
+    #[cfg(target_os = "linux")]
     variant_c_wait_until_threaded("sqrit-clip-C2-7f3e");
     variant_d_wl_copy("sqrit-clip-D-7f3e");
 

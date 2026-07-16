@@ -31,23 +31,23 @@ db-mysql:
 
 # Run full integration suite (pg + mysql adapters); containers stay up.
 it: db-up
-    cargo test --locked --test pg_adapter --test mysql_adapter -- --include-ignored
+    cargo test --locked --test pg_adapter --test schema_pg --test mysql_adapter --test schema_mysql -- --include-ignored
 
 # One-shot CI-style run: up + test + down. Containers stay up on failure.
 it-clean:
     just db-up
-    cargo test --locked --test pg_adapter --test mysql_adapter -- --include-ignored
+    cargo test --locked --test pg_adapter --test schema_pg --test mysql_adapter --test schema_mysql -- --include-ignored
     just db-down
 
 # Run only the postgres adapter tests against a freshly-started pg container.
 it-pg:
     docker compose up -d --wait postgres
-    cargo test --locked --test pg_adapter -- --include-ignored
+    cargo test --locked --test pg_adapter --test schema_pg -- --include-ignored
 
 # Run only the mysql adapter tests against a freshly-started mysql container.
 it-mysql:
     docker compose up -d --wait mysql
-    cargo test --locked --test mysql_adapter -- --include-ignored
+    cargo test --locked --test mysql_adapter --test schema_mysql -- --include-ignored
 
 # Run sqlite adapter tests (no docker required).
 it-sqlite:
