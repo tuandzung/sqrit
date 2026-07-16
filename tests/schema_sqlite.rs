@@ -78,6 +78,29 @@ async fn sqlite_index_uniqueness_comes_from_metadata() {
     assert!(!index.unique);
 }
 
+#[tokio::test]
+async fn sqlite_trigger_event_ignores_comments() {
+    let tmp = tempdir().unwrap();
+    let path = tmp.path().join("t.db");
+    let mut adapter = SqliteAdapter::new(path.to_str().unwrap());
+    adapter.connect().await.unwrap();
+    adapter
+        .execute("CREATE TABLE users (id INTEGER PRIMARY KEY)")
+        .await
+        .unwrap();
+    adapter
+        .execute(
+            "CREATE TRIGGER trg_users_audit /* DELETE */ AFTER UPDATE ON users
+             BEGIN SELECT NEW.id; END",
+        )
+        .await
+        .unwrap();
+
+    let schema = adapter.schema_info().await.unwrap();
+
+    assert_eq!(schema.namespaces[0].triggers[0].event, "UPDATE");
+}
+
 #[test]
 fn object_kind_predicates_match_explorer_actions() {
     assert!(ObjectKind::Table.supports_select_star());

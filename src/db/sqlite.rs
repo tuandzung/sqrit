@@ -2,11 +2,25 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
+use crate::sql::{tokenize, TokenKind};
+
 use super::types::{
     ColumnInfo, IndexObject, Namespace, QueryResult, ResultColumn, SchemaInfo, TableObject,
     TriggerObject, Value, ViewObject,
 };
 use super::Database;
+
+fn trigger_event(sql: &str) -> String {
+    tokenize(sql)
+        .into_iter()
+        .filter(|token| token.kind == TokenKind::Keyword)
+        .take_while(|token| !token.text.eq_ignore_ascii_case("ON"))
+        .find_map(|token| {
+            let event = token.text.to_ascii_uppercase();
+            matches!(event.as_str(), "INSERT" | "UPDATE" | "DELETE").then_some(event)
+        })
+        .unwrap_or_default()
+}
 
 pub struct SqliteAdapter {
     path: String,
@@ -79,16 +93,10 @@ impl SqliteAdapter {
                     Some(Value::Text(table)) => table.clone(),
                     _ => return None,
                 };
-                let sql = match row.get("sql") {
-                    Some(Value::Text(sql)) => sql.to_uppercase(),
+                let event = match row.get("sql") {
+                    Some(Value::Text(sql)) => trigger_event(sql),
                     _ => String::new(),
                 };
-                let event = sql
-                    .split_whitespace()
-                    .take_while(|word| *word != "ON")
-                    .find(|word| matches!(*word, "INSERT" | "UPDATE" | "DELETE"))
-                    .unwrap_or("")
-                    .to_string();
                 Some(TriggerObject { name, table, event })
             })
             .collect())
