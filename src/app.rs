@@ -16,7 +16,7 @@ use tokio::sync::mpsc;
 use crate::explorer::ExplorerState;
 use crate::results::ResultsState;
 use crate::results_render::{matched_ranges_for, render_cell};
-use crate::sql::{tokenize, TokenKind};
+use crate::sql::{tokenize, StatementRange, TokenKind};
 
 use crate::autocomplete::AutocompleteState;
 use crate::config::Config;
@@ -106,6 +106,7 @@ pub struct App {
     pub results: Option<crate::db::types::QueryResult>,
     pub query_status: QueryStatus,
     pub pending_query: Option<String>,
+    pub selected_statement: Option<StatementRange>,
     pub results_state: ResultsState,
     pub fuzzy_filter: crate::filter::FuzzyFilter,
     pub last_query: Option<String>,
@@ -168,6 +169,7 @@ impl App {
             results: None,
             query_status: QueryStatus::Idle,
             pending_query: None,
+            selected_statement: None,
             results_state: ResultsState::new(),
             fuzzy_filter: crate::filter::FuzzyFilter::new(),
             last_query: None,
@@ -326,8 +328,19 @@ impl App {
             }
         }
 
+        let had_selection = self.selected_statement.is_some();
+        let cursor_before = self.editor.cursor();
+        let text_before = had_selection.then(|| self.editor.text());
+
         let mode = self.mode;
         mode.handle_key(key, self);
+
+        if had_selection
+            && (self.editor.cursor() != cursor_before
+                || text_before.as_deref() != Some(self.editor.text().as_str()))
+        {
+            self.selected_statement = None;
+        }
     }
 
     /// Drop the active DB handle, clear cached schema + connection label,
@@ -385,6 +398,11 @@ impl App {
         if let Err(e) = store.append(&entry) {
             self.status_message = format!("history append failed: {}", e);
         }
+    }
+
+    pub fn queue_query(&mut self, query: String, statement: Option<StatementRange>) {
+        self.selected_statement = statement;
+        self.pending_query = Some(query);
     }
 
     pub fn execute_pending(&mut self) {
@@ -493,7 +511,9 @@ impl App {
                         // V9: paste events bypass the space-prefix
                         // dispatcher — a pasted leading space must not
                         // arm the command palette.
-                        self.mode.handler().handle_paste(&text, self);
+                        self.selected_statement = None;
+                        let mode = self.mode;
+                        mode.handler().handle_paste(&text, self);
                     }
                     _ => {}
                 }

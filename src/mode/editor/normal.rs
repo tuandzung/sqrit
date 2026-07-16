@@ -1,6 +1,6 @@
 use crossterm::event::{KeyCode, KeyEvent};
 
-use crate::app::App;
+use crate::app::{App, QueryStatus};
 use crate::mode::{KeyBinding, Mode, ModeHandler};
 
 #[derive(Default)]
@@ -25,6 +25,10 @@ const BINDINGS: &[KeyBinding] = &[
     KeyBinding {
         key: "Enter",
         action: "Execute query",
+    },
+    KeyBinding {
+        key: "gs",
+        action: "Execute statement under cursor",
     },
     KeyBinding {
         key: "h / j / k / l",
@@ -93,15 +97,43 @@ pub fn handle_key(key: KeyEvent, app: &mut App) {
                 app.editor.go_top();
                 return;
             }
+            KeyCode::Char('s') => {
+                let backend = app
+                    .active_connection
+                    .as_ref()
+                    .and_then(|name| app.config.get_connection(name))
+                    .map(|connection| connection.db_type.clone());
+                let Some(backend) = backend else {
+                    app.query_status = QueryStatus::Error("No database connection".to_string());
+                    return;
+                };
+                let text = app.editor.text();
+                match crate::sql::statement_at_cursor(&text, app.editor.cursor(), backend) {
+                    Ok(Some(statement)) => {
+                        let query = text[statement.range.clone()].to_string();
+                        app.status_message = format!(
+                            "running statement {}/{}",
+                            statement.ordinal, statement.total
+                        );
+                        app.queue_query(query, Some(statement));
+                    }
+                    Ok(None) => {
+                        app.query_status = QueryStatus::Idle;
+                        app.status_message = "no statement at cursor".to_string();
+                    }
+                    Err(error) => {
+                        app.query_status = QueryStatus::Error(error.to_string());
+                    }
+                }
+                return;
+            }
             _ => return,
         }
     }
 
     match key.code {
         // Execute query
-        KeyCode::Enter => {
-            app.pending_query = Some(app.editor.text());
-        }
+        KeyCode::Enter => app.queue_query(app.editor.text(), None),
 
         // Mode switch
         KeyCode::Char('i') => app.mode = Mode::QueryInsert,

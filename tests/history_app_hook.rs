@@ -50,3 +50,32 @@ async fn errored_query_appends_history_entry_with_error_status() {
         "errored queries must record rows=None so no stale count leaks"
     );
 }
+
+#[tokio::test]
+async fn statement_execution_records_only_the_selected_sql() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let mut app = common::test_app();
+    if let Some(ref mut db) = app.db {
+        db.connect().await.unwrap();
+    }
+    let dir = tempfile::tempdir().unwrap();
+    app.sqrit_dir = dir.path().to_path_buf();
+    app.active_connection = Some("test".to_string());
+    app.editor
+        .insert_str("SELECT 1 AS first; SELECT 2 AS second;");
+    for _ in 0..20 {
+        app.handle_key_event(KeyEvent::new(KeyCode::Char('h'), KeyModifiers::NONE));
+    }
+    app.handle_key_event(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE));
+    app.handle_key_event(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE));
+
+    app.execute_pending();
+    common::wait_for_query(&mut app, std::time::Duration::from_secs(5)).await;
+
+    let entries = HistoryStore::new(history_path_for(&app.sqrit_dir, "test"))
+        .load()
+        .unwrap();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].sql, "SELECT 1 AS first;");
+}
