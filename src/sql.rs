@@ -409,12 +409,19 @@ fn classify(sql: &str, backend: &DbType) -> Result<Vec<ScanKind>, StatementScanE
             b'\'' => consume_quote(bytes, &mut kinds, i, b'\'', "single-quoted string")?,
             b'"' => consume_quote(bytes, &mut kinds, i, b'"', "double-quoted identifier")?,
             b'`' => consume_quote(bytes, &mut kinds, i, b'`', "backtick identifier")?,
-            b'-' if bytes.get(i + 1) == Some(&b'-') => consume_line_comment(bytes, &mut kinds, i),
+            b'-' if bytes.get(i + 1) == Some(&b'-')
+                && (!matches!(backend, DbType::Mysql)
+                    || bytes.get(i + 2).is_some_and(|byte| {
+                        byte.is_ascii_whitespace() || byte.is_ascii_control()
+                    })) =>
+            {
+                consume_line_comment(bytes, &mut kinds, i)
+            }
             b'#' if matches!(backend, DbType::Mysql) => consume_line_comment(bytes, &mut kinds, i),
             b'/' if bytes.get(i + 1) == Some(&b'*') => {
                 consume_block_comment(bytes, &mut kinds, i, matches!(backend, DbType::Postgres))?
             }
-            b'$' if matches!(backend, DbType::Postgres) => match dollar_delimiter(bytes, i) {
+            b'$' if matches!(backend, DbType::Postgres) => match dollar_delimiter(sql, i) {
                 Some(delimiter) => consume_dollar(bytes, &mut kinds, i, delimiter)?,
                 None => i + 1,
             },
@@ -491,24 +498,31 @@ fn consume_block_comment(
     Err(StatementScanError::Unterminated("block comment"))
 }
 
-fn dollar_delimiter(bytes: &[u8], start: usize) -> Option<&[u8]> {
-    let mut i = start + 1;
-    if bytes.get(i) == Some(&b'$') {
-        return Some(&bytes[start..=i]);
-    }
-    let first = *bytes.get(i)?;
-    if !(first.is_ascii_alphabetic() || first == b'_') {
+fn dollar_delimiter(sql: &str, start: usize) -> Option<&[u8]> {
+    if sql[..start]
+        .chars()
+        .next_back()
+        .is_some_and(|ch| ch.is_alphanumeric() || ch == '_' || ch == '$')
+    {
         return None;
     }
-    i += 1;
-    while let Some(byte) = bytes.get(i) {
-        if *byte == b'$' {
-            return Some(&bytes[start..=i]);
+
+    let mut chars = sql[start + 1..].char_indices();
+    let (_, first) = chars.next()?;
+    if first == '$' {
+        return Some(&sql.as_bytes()[start..start + 2]);
+    }
+    if !(first.is_alphabetic() || first == '_') {
+        return None;
+    }
+
+    for (offset, ch) in chars {
+        if ch == '$' {
+            return Some(&sql.as_bytes()[start..start + offset + 2]);
         }
-        if !(byte.is_ascii_alphanumeric() || *byte == b'_') {
+        if !(ch.is_alphanumeric() || ch == '_') {
             return None;
         }
-        i += 1;
     }
     None
 }

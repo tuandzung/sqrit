@@ -87,6 +87,41 @@ fn postgres_tagged_dollar_blocks_are_protected() {
 }
 
 #[test]
+fn mysql_dash_dash_requires_following_whitespace_or_control() {
+    let sql = "SELECT 1--2; SELECT 3;";
+    assert_eq!(
+        selected(sql, (0, 10), DbType::Mysql),
+        ("SELECT 1--2;".into(), 1, 2)
+    );
+    assert_eq!(
+        selected(sql, (0, 15), DbType::Mysql),
+        ("SELECT 3;".into(), 2, 2)
+    );
+}
+
+#[test]
+fn postgres_dollar_opener_requires_identifier_boundary() {
+    let sql = "SELECT foo$tag$; SELECT 2;";
+    assert_eq!(
+        selected(sql, (0, 2), DbType::Postgres),
+        ("SELECT foo$tag$;".into(), 1, 2)
+    );
+}
+
+#[test]
+fn postgres_dollar_tags_accept_non_ascii_identifiers() {
+    let sql = "DO $é$ BEGIN\nPERFORM ';';\nEND $é$;\nSELECT 2;";
+    assert_eq!(
+        selected(sql, (1, 2), DbType::Postgres),
+        ("DO $é$ BEGIN\nPERFORM ';';\nEND $é$;".into(), 1, 2)
+    );
+    assert_eq!(
+        selected(sql, (3, 2), DbType::Postgres),
+        ("SELECT 2;".into(), 2, 2)
+    );
+}
+
+#[test]
 fn separator_and_surrounding_space_choose_the_documented_neighbor() {
     let sql = "  SELECT 1;   SELECT 2;   ";
     assert_eq!(selected(sql, (0, 0), DbType::Sqlite).0, "SELECT 1;");
