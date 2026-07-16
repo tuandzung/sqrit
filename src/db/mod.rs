@@ -8,40 +8,6 @@ pub mod types;
 use async_trait::async_trait;
 use types::{ColumnInfo, QueryResult, SchemaInfo};
 
-/// Skip leading whitespace, line (`--`), and block (`/* */`) comments and
-/// return the remaining SQL with leading whitespace also trimmed. Shared by
-/// adapter helpers that need to identify the first real keyword
-/// (e.g. SELECT vs DDL, BEGIN/COMMIT tracking).
-pub(crate) fn skip_leading_comments(sql: &str, mysql_hash_comments: bool) -> &str {
-    let mut rest = sql;
-    loop {
-        let trimmed = rest.trim_start();
-        if let Some(stripped) = trimmed.strip_prefix("--") {
-            rest = stripped.find('\n').map_or("", |i| &stripped[i + 1..]);
-        } else if let Some(stripped) = trimmed.strip_prefix("/*") {
-            rest = stripped.find("*/").map_or("", |i| &stripped[i + 2..]);
-        } else if mysql_hash_comments {
-            if let Some(stripped) = trimmed.strip_prefix('#') {
-                rest = stripped.find('\n').map_or("", |i| &stripped[i + 1..]);
-                continue;
-            }
-            return trimmed;
-        } else {
-            return trimmed;
-        }
-    }
-}
-
-pub(crate) fn is_query_returning_rows(sql: &str, mysql_hash_comments: bool) -> bool {
-    let first_word = skip_leading_comments(sql, mysql_hash_comments)
-        .split(|c: char| !c.is_alphanumeric() && c != '_')
-        .next()
-        .unwrap_or("");
-    ["SELECT", "WITH", "VALUES", "TABLE"]
-        .iter()
-        .any(|keyword| first_word.eq_ignore_ascii_case(keyword))
-}
-
 #[async_trait]
 pub trait Database: Send + Sync {
     async fn connect(&mut self) -> anyhow::Result<()>;
@@ -78,7 +44,8 @@ pub trait Database: Send + Sync {
 
 #[cfg(test)]
 mod tests {
-    use super::is_query_returning_rows;
+    use crate::config::DbType;
+    use crate::sql::query_returns_rows;
 
     #[test]
     fn row_returning_detection_skips_comments_and_covers_all_keywords() {
@@ -89,15 +56,59 @@ mod tests {
             "TABLE users",
             "-- comment\n/* comment */ SELECT 1",
         ] {
-            assert!(is_query_returning_rows(sql, false), "{sql}");
+            assert!(query_returns_rows(sql, &DbType::Postgres), "{sql}");
         }
-        assert!(!is_query_returning_rows("INSERT INTO t VALUES (1)", false));
+        assert!(!query_returns_rows(
+            "INSERT INTO t VALUES (1)",
+            &DbType::Postgres
+        ));
     }
 
     #[test]
     fn mysql_hash_comments_are_skipped_only_for_mysql() {
         let sql = "# comment\nSELECT 1";
-        assert!(is_query_returning_rows(sql, true));
-        assert!(!is_query_returning_rows(sql, false));
+        assert!(query_returns_rows(sql, &DbType::Mysql));
+        assert!(!query_returns_rows(sql, &DbType::Postgres));
+    }
+
+    #[test]
+    fn postgres_nested_block_comments_are_skipped_to_matching_depth() {
+        let sql = "/* outer /* inner */ still outer */ SELECT 1";
+        assert!(query_returns_rows(sql, &DbType::Postgres));
+    }
+
+    #[test]
+    fn mysql_dash_comment_requires_following_whitespace() {
+        assert!(query_returns_rows("-- comment\nSELECT 1", &DbType::Mysql));
+        assert!(!query_returns_rows("--x\nSELECT 1", &DbType::Mysql));
+    }
+
+    #[test]
+    fn mysql_executable_comments_contribute_words() {
+        assert!(query_returns_rows("/*!50003 SELECT 1 */", &DbType::Mysql));
+        assert!(!query_returns_rows(
+            "/*!50003 SELECT 1 */",
+            &DbType::Postgres
+        ));
+    }
+
+    #[test]
+    fn cte_row_detection_uses_the_depth_zero_main_statement() {
+        for sql in [
+            "WITH q AS (SELECT 1) SELECT * FROM q",
+            "WITH q AS (SELECT 1) VALUES (1)",
+            "WITH q AS (SELECT 1) TABLE q",
+            "WITH a AS (SELECT 1), b AS (SELECT * FROM a) SELECT * FROM b",
+        ] {
+            assert!(query_returns_rows(sql, &DbType::Postgres), "{sql}");
+        }
+
+        for sql in [
+            "WITH q AS (SELECT 1) INSERT INTO t SELECT * FROM q",
+            "WITH q AS (SELECT 1) UPDATE t SET n = 2",
+            "WITH q AS (SELECT 1) DELETE FROM t",
+        ] {
+            assert!(!query_returns_rows(sql, &DbType::Postgres), "{sql}");
+        }
     }
 }

@@ -292,7 +292,7 @@ impl Database for PgAdapter {
     }
 
     async fn execute(&self, query: &str) -> anyhow::Result<QueryResult> {
-        let is_select = super::is_query_returning_rows(query, false);
+        let is_select = crate::sql::query_returns_rows(query, &crate::config::DbType::Postgres);
         let mut guard = self.exec_conn.lock().await;
         let conn = guard
             .as_mut()

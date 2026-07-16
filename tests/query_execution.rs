@@ -211,6 +211,33 @@ fn idle_scanner_error_stays_out_of_database_status() {
 }
 
 #[test]
+fn stale_database_error_does_not_hide_new_scanner_feedback() {
+    for (sql, expected) in [
+        ("SELECT 'open", "unterminated single-quoted string"),
+        (
+            " -- only a comment\n/* and another */ ; ",
+            "no statement at cursor",
+        ),
+    ] {
+        let mut app = make_connected_app();
+        app.active_connection = Some("test".to_string());
+        app.query_status = QueryStatus::Error("old database failure".to_string());
+        app.editor.insert_str(sql);
+
+        press(&mut app, crossterm::event::KeyCode::Char('g'));
+        press(&mut app, crossterm::event::KeyCode::Char('s'));
+
+        assert_eq!(
+            app.query_status,
+            QueryStatus::Error("old database failure".to_string())
+        );
+        let status = app.status_bar_text();
+        assert!(status.contains("old database failure"), "{status}");
+        assert!(status.contains(expected), "{status}");
+    }
+}
+
+#[test]
 fn empty_or_comment_only_buffer_reports_no_statement() {
     let mut app = make_connected_app();
     app.active_connection = Some("test".to_string());

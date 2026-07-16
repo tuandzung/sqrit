@@ -445,12 +445,13 @@ impl App {
         self.query_started_at = Some(Instant::now());
         self.last_query = Some(query.clone());
 
-        let mysql_hash_comments = self
+        let backend = self
             .active_connection
             .as_ref()
             .and_then(|name| self.config.get_connection(name))
-            .is_some_and(|connection| matches!(connection.db_type, crate::config::DbType::Mysql));
-        let returns_rows = crate::db::is_query_returning_rows(&query, mysql_hash_comments);
+            .map(|connection| connection.db_type.clone())
+            .unwrap_or(crate::config::DbType::Sqlite);
+        let returns_rows = crate::sql::query_returns_rows(&query, &backend);
 
         if let Some(ref db) = self.db {
             let db: Box<dyn Database> = db.clone_box();
@@ -1235,7 +1236,11 @@ impl App {
         };
 
         let status = if let QueryStatus::Error(e) = &self.query_status {
-            format!("ERR: {}", e)
+            if self.status_message.is_empty() {
+                format!("ERR: {}", e)
+            } else {
+                format!("ERR: {} | {}", e, self.status_message)
+            }
         } else if self.status_message.is_empty() {
             query_status.to_string()
         } else if query_status.is_empty() {

@@ -157,23 +157,28 @@ impl MySqlAdapter {
     }
 }
 
+#[cfg(test)]
 fn tx_keyword(sql: &str) -> Option<bool> {
-    let mut words = super::skip_leading_comments(sql, true)
-        .split(|c: char| !c.is_alphanumeric() && c != '_')
-        .filter(|s| !s.is_empty())
-        .map(str::to_uppercase);
-    let first = words.next().unwrap_or_default();
-    match first.as_str() {
-        "BEGIN" => Some(true),
-        // `START` is overloaded — `START TRANSACTION` opens a tx, but
-        // `START SLAVE` / `START REPLICA` / `START GROUP_REPLICATION` are
-        // replication control statements and must not flip in_tx.
-        "START" => match words.next().as_deref() {
-            Some("TRANSACTION") => Some(true),
+    let query = crate::sql::classify_query(sql, &crate::config::DbType::Mysql).ok()?;
+    tx_words(&query.words)
+}
+
+fn tx_words(words: &[&str]) -> Option<bool> {
+    let first = words.first().copied().unwrap_or_default();
+    if first.eq_ignore_ascii_case("BEGIN") {
+        Some(true)
+    // `START` is overloaded — `START TRANSACTION` opens a tx, but
+    // `START SLAVE` / `START REPLICA` / `START GROUP_REPLICATION` are
+    // replication control statements and must not flip in_tx.
+    } else if first.eq_ignore_ascii_case("START") {
+        match words.get(1) {
+            Some(word) if word.eq_ignore_ascii_case("TRANSACTION") => Some(true),
             _ => None,
-        },
-        "COMMIT" | "ROLLBACK" => Some(false),
-        _ => None,
+        }
+    } else if first.eq_ignore_ascii_case("COMMIT") || first.eq_ignore_ascii_case("ROLLBACK") {
+        Some(false)
+    } else {
+        None
     }
 }
 
@@ -211,11 +216,19 @@ impl Database for MySqlAdapter {
     }
 
     async fn execute(&self, query: &str) -> anyhow::Result<QueryResult> {
-        if super::skip_leading_comments(query, true).is_empty() {
+        let classification = crate::sql::classify_query(query, &crate::config::DbType::Mysql).ok();
+        if classification
+            .as_ref()
+            .is_some_and(|query| !query.has_executable_sql)
+        {
             anyhow::bail!("query is empty");
         }
-        let is_select = super::is_query_returning_rows(query, true);
-        let tx_transition = tx_keyword(query);
+        let is_select = classification
+            .as_ref()
+            .is_some_and(|query| query.returns_rows);
+        let tx_transition = classification
+            .as_ref()
+            .and_then(|query| tx_words(&query.words));
         let mut guard = self.exec_conn.lock().await;
         let conn = guard
             .as_mut()

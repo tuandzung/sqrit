@@ -48,6 +48,15 @@ fn protected_regions_do_not_create_boundaries() {
 }
 
 #[test]
+fn mysql_executable_comment_semicolons_are_not_statement_boundaries() {
+    let sql = "SELECT /*!50003 1; 2 */ 3; SELECT 4;";
+    assert_eq!(
+        selected(sql, (0, 20), DbType::Mysql),
+        ("SELECT /*!50003 1; 2 */ 3;".into(), 1, 2)
+    );
+}
+
+#[test]
 fn sqlite_bracketed_identifier_cannot_expose_destructive_sql() {
     let sql = "SELECT [safe; DROP TABLE users]; SELECT 2;";
     assert_eq!(
@@ -103,6 +112,48 @@ fn mysql_compound_definitions_fail_closed() {
 }
 
 #[test]
+fn mysql_executable_comment_words_participate_in_compound_safety() {
+    let sql = "CREATE /*!50003 TRIGGER */ audit BEFORE DELETE ON users FOR EACH ROW BEGIN DELETE FROM log; INSERT INTO audit VALUES (OLD.id); END;";
+    let error = statement_at_cursor(sql, (0, 90), DbType::Mysql).unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        "cannot safely scan MySQL compound definition"
+    );
+}
+
+#[test]
+fn mysql_alter_event_compound_definition_fails_closed() {
+    let sql = "ALTER EVENT cleanup DO BEGIN DELETE FROM log; INSERT INTO audit VALUES (1); END;";
+    let error = statement_at_cursor(sql, (0, 48), DbType::Mysql).unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        "cannot safely scan MySQL compound definition"
+    );
+}
+
+#[test]
+fn postgres_begin_atomic_routines_fail_closed() {
+    for sql in [
+        "CREATE FUNCTION f() RETURNS int BEGIN ATOMIC INSERT INTO log VALUES (1); RETURN 1; END;",
+        "CREATE PROCEDURE p() BEGIN ATOMIC DELETE FROM log; INSERT INTO audit VALUES (1); END;",
+    ] {
+        let error = statement_at_cursor(sql, (0, 65), DbType::Postgres).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "cannot safely scan PostgreSQL compound definition"
+        );
+    }
+}
+
+#[test]
+fn mysql_show_create_metadata_statements_are_not_compound_definitions() {
+    for object in ["TRIGGER", "PROCEDURE", "FUNCTION", "EVENT"] {
+        let sql = format!("SHOW CREATE {object} object_name;");
+        assert_eq!(selected(&sql, (0, 6), DbType::Mysql).0, sql, "{object}");
+    }
+}
+
+#[test]
 fn compound_definition_after_safe_statement_still_fails_closed() {
     for (sql, backend) in [
         (
@@ -112,6 +163,14 @@ fn compound_definition_after_safe_statement_still_fails_closed() {
         (
             "SELECT 0; CREATE PROCEDURE p() BEGIN SELECT 1; SELECT 2; END;",
             DbType::Mysql,
+        ),
+        (
+            "SELECT 0; CREATE /*!50003 TRIGGER */ audit BEFORE DELETE ON users FOR EACH ROW BEGIN DELETE FROM log; INSERT INTO audit VALUES (OLD.id); END;",
+            DbType::Mysql,
+        ),
+        (
+            "SELECT 0; CREATE FUNCTION f() RETURNS int BEGIN ATOMIC DELETE FROM log; RETURN 1; END;",
+            DbType::Postgres,
         ),
     ] {
         assert!(statement_at_cursor(sql, (0, 55), backend).is_err());
@@ -210,6 +269,39 @@ fn blank_line_inside_quoted_region_is_not_a_boundary() {
         selected(sql, (1, 0), DbType::Sqlite),
         ("SELECT 'one\n\n two'".into(), 1, 2)
     );
+}
+
+#[test]
+fn blank_line_fallback_ignores_every_multiline_protected_region() {
+    for (sql, backend, expected) in [
+        (
+            "SELECT \"one\n\n two\"\n\nSELECT 2",
+            DbType::Sqlite,
+            "SELECT \"one\n\n two\"",
+        ),
+        (
+            "SELECT `one\n\n two`\n\nSELECT 2",
+            DbType::Mysql,
+            "SELECT `one\n\n two`",
+        ),
+        (
+            "SELECT [one\n\n two]\n\nSELECT 2",
+            DbType::Sqlite,
+            "SELECT [one\n\n two]",
+        ),
+        (
+            "SELECT 1 /* one\n\n two */\n\nSELECT 2",
+            DbType::Postgres,
+            "SELECT 1 /* one\n\n two */",
+        ),
+        (
+            "SELECT $body$one\n\n two$body$\n\nSELECT 2",
+            DbType::Postgres,
+            "SELECT $body$one\n\n two$body$",
+        ),
+    ] {
+        assert_eq!(selected(sql, (1, 0), backend).0, expected, "{sql}");
+    }
 }
 
 #[test]

@@ -372,6 +372,40 @@ enum ScanKind {
     Sql,
     Quoted,
     Comment,
+    ExecutableComment,
+}
+
+impl ScanKind {
+    fn contributes_words(self) -> bool {
+        matches!(self, Self::Sql | Self::ExecutableComment)
+    }
+}
+
+struct SqlAnalysis<'a> {
+    text: &'a str,
+    kinds: Vec<ScanKind>,
+    lexemes: Vec<Lexeme<'a>>,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum LexemeKind<'a> {
+    Word(&'a str),
+    OpenParen,
+    CloseParen,
+    Comma,
+    StatementEnd,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Lexeme<'a> {
+    offset: usize,
+    kind: LexemeKind<'a>,
+}
+
+pub(crate) struct QueryClassification<'a> {
+    pub(crate) has_executable_sql: bool,
+    pub(crate) returns_rows: bool,
+    pub(crate) words: Vec<&'a str>,
 }
 
 pub fn statement_at_cursor(
@@ -379,13 +413,13 @@ pub fn statement_at_cursor(
     cursor: (usize, usize),
     backend: DbType,
 ) -> Result<Option<StatementRange>, StatementScanError> {
-    let kinds = classify(sql, &backend)?;
-    if let Some(kind) = unsafe_compound_ddl(sql, &kinds, &backend) {
+    let analysis = classify(sql, &backend)?;
+    if let Some(kind) = unsafe_compound_ddl(&analysis, &backend) {
         return Err(StatementScanError::UnsafeCompoundDdl(kind));
     }
-    let ranges = candidate_ranges(sql, &kinds)
+    let ranges = candidate_ranges(sql, &analysis.kinds)
         .into_iter()
-        .filter_map(|range| trim_executable(sql, &kinds, range))
+        .filter_map(|range| trim_executable(sql, &analysis.kinds, range))
         .collect::<Vec<_>>();
     if ranges.is_empty() {
         return Ok(None);
@@ -403,27 +437,116 @@ pub fn statement_at_cursor(
     }))
 }
 
-fn unsafe_compound_ddl(sql: &str, kinds: &[ScanKind], backend: &DbType) -> Option<&'static str> {
-    let words = sql_words(sql, kinds);
+pub fn query_returns_rows(sql: &str, backend: &DbType) -> bool {
+    classify_query(sql, backend).is_ok_and(|query| query.returns_rows)
+}
+
+pub(crate) fn classify_query<'a>(
+    sql: &'a str,
+    backend: &DbType,
+) -> Result<QueryClassification<'a>, StatementScanError> {
+    let analysis = classify(sql, backend)?;
+    let words = analysis
+        .lexemes
+        .iter()
+        .filter_map(|lexeme| match lexeme.kind {
+            LexemeKind::Word(word) => Some(word),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    let returns_rows = main_statement_word(&analysis.lexemes).is_some_and(|word| {
+        ["SELECT", "VALUES", "TABLE"]
+            .iter()
+            .any(|keyword| word.eq_ignore_ascii_case(keyword))
+    });
+    let has_executable_sql = trim_executable(sql, &analysis.kinds, 0..sql.len()).is_some();
+    Ok(QueryClassification {
+        has_executable_sql,
+        returns_rows,
+        words,
+    })
+}
+
+fn main_statement_word<'a>(lexemes: &[Lexeme<'a>]) -> Option<&'a str> {
+    let first = lexemes
+        .iter()
+        .position(|lexeme| matches!(lexeme.kind, LexemeKind::Word(_) | LexemeKind::StatementEnd))?;
+    let LexemeKind::Word(first_word) = lexemes[first].kind else {
+        return None;
+    };
+    if !first_word.eq_ignore_ascii_case("WITH") {
+        return Some(first_word);
+    }
+
+    let mut depth = 0usize;
+    let mut saw_as = false;
+    let mut in_body = false;
+    let mut completed_body = false;
+    for lexeme in &lexemes[first + 1..] {
+        match lexeme.kind {
+            LexemeKind::StatementEnd => return None,
+            LexemeKind::Word(word) if depth == 0 => {
+                if completed_body {
+                    return Some(word);
+                }
+                if word.eq_ignore_ascii_case("AS") {
+                    saw_as = true;
+                }
+            }
+            LexemeKind::OpenParen => {
+                if depth == 0 && saw_as {
+                    in_body = true;
+                }
+                depth += 1;
+            }
+            LexemeKind::CloseParen if depth > 0 => {
+                depth -= 1;
+                if depth == 0 && in_body {
+                    completed_body = true;
+                }
+            }
+            LexemeKind::Comma if depth == 0 && completed_body => {
+                saw_as = false;
+                in_body = false;
+                completed_body = false;
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn unsafe_compound_ddl(analysis: &SqlAnalysis<'_>, backend: &DbType) -> Option<&'static str> {
     let is_compound = |word: &str| {
         ["PROCEDURE", "FUNCTION", "TRIGGER", "EVENT"]
             .iter()
             .any(|kind| word.eq_ignore_ascii_case(kind))
     };
 
-    for (create, _) in words
-        .iter()
-        .enumerate()
-        .filter(|(_, word)| word.eq_ignore_ascii_case("CREATE"))
-    {
+    for range in candidate_ranges(analysis.text, &analysis.kinds) {
+        let words = analysis
+            .lexemes
+            .iter()
+            .filter(|lexeme| range.contains(&lexeme.offset))
+            .filter_map(|lexeme| match lexeme.kind {
+                LexemeKind::Word(word) => Some(word),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        let Some(first) = words.first() else {
+            continue;
+        };
         match backend {
             DbType::Sqlite => {
-                let object = if words.get(create + 1).is_some_and(|word| {
+                if !first.eq_ignore_ascii_case("CREATE") {
+                    continue;
+                }
+                let object = if words.get(1).is_some_and(|word| {
                     word.eq_ignore_ascii_case("TEMP") || word.eq_ignore_ascii_case("TEMPORARY")
                 }) {
-                    create + 2
+                    2
                 } else {
-                    create + 1
+                    1
                 };
                 if words
                     .get(object)
@@ -433,7 +556,29 @@ fn unsafe_compound_ddl(sql: &str, kinds: &[ScanKind], backend: &DbType) -> Optio
                 }
             }
             DbType::Mysql => {
-                let mut object = create + 1;
+                if first.eq_ignore_ascii_case("ALTER") {
+                    let event = words
+                        .get(1)
+                        .is_some_and(|word| word.eq_ignore_ascii_case("EVENT"))
+                        || (words
+                            .get(1)
+                            .is_some_and(|word| word.eq_ignore_ascii_case("DEFINER"))
+                            && words
+                                .iter()
+                                .skip(2)
+                                .any(|word| word.eq_ignore_ascii_case("EVENT")));
+                    let compound_body = words.windows(2).any(|pair| {
+                        pair[0].eq_ignore_ascii_case("DO") && pair[1].eq_ignore_ascii_case("BEGIN")
+                    });
+                    if event && compound_body {
+                        return Some("MySQL compound definition");
+                    }
+                    continue;
+                }
+                if !first.eq_ignore_ascii_case("CREATE") {
+                    continue;
+                }
+                let mut object = 1;
                 if words
                     .get(object)
                     .is_some_and(|word| word.eq_ignore_ascii_case("OR"))
@@ -459,35 +604,73 @@ fn unsafe_compound_ddl(sql: &str, kinds: &[ScanKind], backend: &DbType) -> Optio
                     return Some("MySQL compound definition");
                 }
             }
-            DbType::Postgres => return None,
+            DbType::Postgres => {
+                if !first.eq_ignore_ascii_case("CREATE") {
+                    continue;
+                }
+                let mut object = 1;
+                if words
+                    .get(object)
+                    .is_some_and(|word| word.eq_ignore_ascii_case("OR"))
+                    && words
+                        .get(object + 1)
+                        .is_some_and(|word| word.eq_ignore_ascii_case("REPLACE"))
+                {
+                    object += 2;
+                }
+                let is_routine = words.get(object).is_some_and(|word| {
+                    word.eq_ignore_ascii_case("FUNCTION") || word.eq_ignore_ascii_case("PROCEDURE")
+                });
+                let begin_atomic = words.windows(2).any(|pair| {
+                    pair[0].eq_ignore_ascii_case("BEGIN") && pair[1].eq_ignore_ascii_case("ATOMIC")
+                });
+                if is_routine && begin_atomic {
+                    return Some("PostgreSQL compound definition");
+                }
+            }
         }
     }
     None
 }
 
-fn sql_words<'a>(sql: &'a str, kinds: &[ScanKind]) -> Vec<&'a str> {
+fn lexemes<'a>(sql: &'a str, kinds: &[ScanKind]) -> Vec<Lexeme<'a>> {
     let bytes = sql.as_bytes();
-    let mut words = Vec::new();
+    let mut lexemes = Vec::new();
     let mut i = 0;
     while i < bytes.len() {
-        if kinds[i] != ScanKind::Sql || !(bytes[i].is_ascii_alphabetic() || bytes[i] == b'_') {
+        if kinds[i].contributes_words() && (bytes[i].is_ascii_alphabetic() || bytes[i] == b'_') {
+            let start = i;
             i += 1;
+            while i < bytes.len()
+                && kinds[i].contributes_words()
+                && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_')
+            {
+                i += 1;
+            }
+            lexemes.push(Lexeme {
+                offset: start,
+                kind: LexemeKind::Word(&sql[start..i]),
+            });
             continue;
         }
-        let start = i;
-        i += 1;
-        while i < bytes.len()
-            && kinds[i] == ScanKind::Sql
-            && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_')
-        {
-            i += 1;
+        if kinds[i].contributes_words() {
+            let kind = match bytes[i] {
+                b'(' => Some(LexemeKind::OpenParen),
+                b')' => Some(LexemeKind::CloseParen),
+                b',' => Some(LexemeKind::Comma),
+                b';' if kinds[i] == ScanKind::Sql => Some(LexemeKind::StatementEnd),
+                _ => None,
+            };
+            if let Some(kind) = kind {
+                lexemes.push(Lexeme { offset: i, kind });
+            }
         }
-        words.push(&sql[start..i]);
+        i += 1;
     }
-    words
+    lexemes
 }
 
-fn classify(sql: &str, backend: &DbType) -> Result<Vec<ScanKind>, StatementScanError> {
+fn classify<'a>(sql: &'a str, backend: &DbType) -> Result<SqlAnalysis<'a>, StatementScanError> {
     let bytes = sql.as_bytes();
     let mut kinds = vec![ScanKind::Sql; bytes.len()];
     let mut i = 0;
@@ -528,7 +711,18 @@ fn classify(sql: &str, backend: &DbType) -> Result<Vec<ScanKind>, StatementScanE
             }
             b'#' if matches!(backend, DbType::Mysql) => consume_line_comment(bytes, &mut kinds, i),
             b'/' if bytes.get(i + 1) == Some(&b'*') => {
-                consume_block_comment(bytes, &mut kinds, i, matches!(backend, DbType::Postgres))?
+                let kind = if matches!(backend, DbType::Mysql) && bytes.get(i + 2) == Some(&b'!') {
+                    ScanKind::ExecutableComment
+                } else {
+                    ScanKind::Comment
+                };
+                consume_block_comment(
+                    bytes,
+                    &mut kinds,
+                    i,
+                    matches!(backend, DbType::Postgres),
+                    kind,
+                )?
             }
             b'$' if matches!(backend, DbType::Postgres) => match dollar_delimiter(bytes, i) {
                 Some(delimiter) => consume_dollar(bytes, &mut kinds, i, delimiter)?,
@@ -537,7 +731,12 @@ fn classify(sql: &str, backend: &DbType) -> Result<Vec<ScanKind>, StatementScanE
             _ => i + 1,
         };
     }
-    Ok(kinds)
+    let lexemes = lexemes(sql, &kinds);
+    Ok(SqlAnalysis {
+        text: sql,
+        kinds,
+        lexemes,
+    })
 }
 
 fn quote_uses_backslash(bytes: &[u8], start: usize, quote: u8, backend: &DbType) -> bool {
@@ -616,6 +815,7 @@ fn consume_block_comment(
     kinds: &mut [ScanKind],
     start: usize,
     nested: bool,
+    kind: ScanKind,
 ) -> Result<usize, StatementScanError> {
     let mut depth = 1usize;
     let mut i = start + 2;
@@ -627,7 +827,7 @@ fn consume_block_comment(
             depth -= 1;
             i += 2;
             if depth == 0 {
-                mark(kinds, start..i, ScanKind::Comment);
+                mark(kinds, start..i, kind);
                 return Ok(i);
             }
         } else {
