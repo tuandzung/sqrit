@@ -123,9 +123,12 @@ mod tests {
             "CYCLE set, b SET is_cycle USING path SELECT a FROM t",
             "CYCLE a, set SET is_cycle USING path SELECT a FROM t",
             "SEARCH DEPTH FIRST BY \"set\", b SET ordercol SELECT a FROM t",
+            "SEARCH DEPTH FIRST BY a, b SET cycle CYCLE a, b SET is_cycle USING path SELECT a FROM t",
             "SEARCH BREADTH FIRST BY a, b SET ordercol CYCLE a, b SET is_cycle USING path VALUES (1)",
             "SEARCH DEPTH FIRST BY a, b SET ordercol, q AS (SELECT a FROM t) TABLE q",
             "SEARCH DEPTH FIRST BY set, b SET ordercol CYCLE a, set SET is_cycle USING path, q AS (SELECT a FROM t) TABLE q",
+            "CYCLE a, b SET cycle USING search SELECT a FROM t",
+            "CYCLE a, b SET \"cycle\" USING \"using\" SELECT a FROM t",
         ] {
             let sql = format!("{recursive} {suffix}");
             assert!(query_returns_rows(&sql, &DbType::Postgres), "{sql}");
@@ -158,5 +161,17 @@ mod tests {
         )
         .unwrap();
         assert!(query.can_paginate);
+    }
+
+    #[test]
+    fn postgres_search_target_precedes_a_data_modifying_cte() {
+        let query = classify_query(
+            "WITH RECURSIVE walk(n) AS (VALUES (1) UNION ALL SELECT n + 1 FROM walk WHERE n < 2) SEARCH DEPTH FIRST BY n SET cycle, moved AS (DELETE FROM source RETURNING id) SELECT id FROM moved",
+            &DbType::Postgres,
+        )
+        .unwrap();
+
+        assert!(query.returns_rows);
+        assert!(!query.can_paginate);
     }
 }

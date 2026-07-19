@@ -163,6 +163,8 @@ fn mysql_labeled_alter_event_compound_definition_fails_closed() {
         "ALTER EVENT cleanup DO body標籤part: BEGIN DELETE FROM log; INSERT INTO audit VALUES (1); END;",
         "ALTER EVENT cleanup DO `body-part`: BEGIN DELETE FROM log; INSERT INTO audit VALUES (1); END;",
         "ALTER EVENT do DO body$part: BEGIN DELETE FROM log; INSERT INTO audit VALUES (1); END;",
+        "ALTER EVENT cleanup RENAME TO do DO BEGIN DELETE FROM log; INSERT INTO audit VALUES (1); END;",
+        "ALTER DEFINER = event@localhost EVENT cleanup DO BEGIN DELETE FROM log; INSERT INTO audit VALUES (1); END;",
         "ALTER EVENT cleanup DO /* body */ BEGIN DELETE FROM log; INSERT INTO audit VALUES (1); END;",
         "ALTER EVENT cleanup DO /* label */ body$part /* colon */ : /* block */ BEGIN DELETE FROM log; INSERT INTO audit VALUES (1); END;",
     ] {
@@ -181,6 +183,8 @@ fn mysql_noncompound_alter_event_remains_selectable() {
         "ALTER EVENT cleanup DO DELETE FROM log WHERE expired = 1;",
         "ALTER EVENT cleanup DO UPDATE jobs SET begin = NOW();",
         "ALTER EVENT cleanup DO INSERT INTO begin VALUES (1);",
+        "ALTER EVENT cleanup DO UPDATE jobs SET x = do + begin;",
+        "ALTER EVENT cleanup DO UPDATE jobs SET x = do / (begin - 1);",
     ] {
         assert_eq!(selected(sql, (0, 30), DbType::Mysql).0, sql);
     }

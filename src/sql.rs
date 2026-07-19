@@ -396,6 +396,8 @@ enum LexemeKind<'a> {
     CloseParen,
     Comma,
     Colon,
+    Dot,
+    Separator,
     StatementEnd,
 }
 
@@ -497,9 +499,16 @@ fn statement_shape<'a>(lexemes: &[Lexeme<'a>]) -> (Option<&'a str>, bool) {
     enum ModifierState {
         None,
         SearchAwaitingBy,
-        ExpectingColumn,
-        AfterColumn,
-        Tail,
+        SearchExpectingColumn,
+        SearchAfterColumn,
+        SearchExpectingTarget,
+        SearchAfterTarget,
+        CycleExpectingColumn,
+        CycleAfterColumn,
+        CycleExpectingMark,
+        CycleAfterMark,
+        CycleExpectingPath,
+        CycleAfterPath,
     }
 
     let mut depth = 0usize;
@@ -525,21 +534,43 @@ fn statement_shape<'a>(lexemes: &[Lexeme<'a>]) -> (Option<&'a str>, bool) {
                             ModifierState::None if word.eq_ignore_ascii_case("SEARCH") => {
                                 modifier = ModifierState::SearchAwaitingBy;
                             }
-                            ModifierState::None | ModifierState::Tail
+                            ModifierState::None | ModifierState::SearchAfterTarget
                                 if word.eq_ignore_ascii_case("CYCLE") =>
                             {
-                                modifier = ModifierState::ExpectingColumn;
+                                modifier = ModifierState::CycleExpectingColumn;
                             }
                             ModifierState::SearchAwaitingBy if word.eq_ignore_ascii_case("BY") => {
-                                modifier = ModifierState::ExpectingColumn;
+                                modifier = ModifierState::SearchExpectingColumn;
                             }
-                            ModifierState::ExpectingColumn => {
-                                modifier = ModifierState::AfterColumn;
+                            ModifierState::SearchExpectingColumn => {
+                                modifier = ModifierState::SearchAfterColumn;
                             }
-                            ModifierState::AfterColumn if word.eq_ignore_ascii_case("SET") => {
-                                modifier = ModifierState::Tail;
+                            ModifierState::SearchAfterColumn
+                                if word.eq_ignore_ascii_case("SET") =>
+                            {
+                                modifier = ModifierState::SearchExpectingTarget;
                             }
-                            ModifierState::None | ModifierState::Tail
+                            ModifierState::SearchExpectingTarget => {
+                                modifier = ModifierState::SearchAfterTarget;
+                            }
+                            ModifierState::CycleExpectingColumn => {
+                                modifier = ModifierState::CycleAfterColumn;
+                            }
+                            ModifierState::CycleAfterColumn if word.eq_ignore_ascii_case("SET") => {
+                                modifier = ModifierState::CycleExpectingMark;
+                            }
+                            ModifierState::CycleExpectingMark => {
+                                modifier = ModifierState::CycleAfterMark;
+                            }
+                            ModifierState::CycleAfterMark if word.eq_ignore_ascii_case("USING") => {
+                                modifier = ModifierState::CycleExpectingPath;
+                            }
+                            ModifierState::CycleExpectingPath => {
+                                modifier = ModifierState::CycleAfterPath;
+                            }
+                            ModifierState::None
+                            | ModifierState::SearchAfterTarget
+                            | ModifierState::CycleAfterPath
                                 if ["SELECT", "VALUES", "TABLE", "INSERT", "UPDATE", "DELETE"]
                                     .iter()
                                     .any(|keyword| word.eq_ignore_ascii_case(keyword)) =>
@@ -554,10 +585,15 @@ fn statement_shape<'a>(lexemes: &[Lexeme<'a>]) -> (Option<&'a str>, bool) {
                     }
                 }
             }
-            LexemeKind::Identifier
-                if depth == 0 && completed_body && modifier == ModifierState::ExpectingColumn =>
-            {
-                modifier = ModifierState::AfterColumn;
+            LexemeKind::Identifier if depth == 0 && completed_body => {
+                modifier = match modifier {
+                    ModifierState::SearchExpectingColumn => ModifierState::SearchAfterColumn,
+                    ModifierState::SearchExpectingTarget => ModifierState::SearchAfterTarget,
+                    ModifierState::CycleExpectingColumn => ModifierState::CycleAfterColumn,
+                    ModifierState::CycleExpectingMark => ModifierState::CycleAfterMark,
+                    ModifierState::CycleExpectingPath => ModifierState::CycleAfterPath,
+                    state => state,
+                };
             }
             LexemeKind::OpenParen => {
                 if depth == 0 && saw_as {
@@ -573,8 +609,15 @@ fn statement_shape<'a>(lexemes: &[Lexeme<'a>]) -> (Option<&'a str>, bool) {
                 }
             }
             LexemeKind::Comma if depth == 0 && completed_body => match modifier {
-                ModifierState::AfterColumn => modifier = ModifierState::ExpectingColumn,
-                ModifierState::None | ModifierState::Tail => {
+                ModifierState::SearchAfterColumn => {
+                    modifier = ModifierState::SearchExpectingColumn;
+                }
+                ModifierState::CycleAfterColumn => {
+                    modifier = ModifierState::CycleExpectingColumn;
+                }
+                ModifierState::None
+                | ModifierState::SearchAfterTarget
+                | ModifierState::CycleAfterPath => {
                     saw_as = false;
                     in_body = false;
                     first_body_word = false;
@@ -591,14 +634,39 @@ fn statement_shape<'a>(lexemes: &[Lexeme<'a>]) -> (Option<&'a str>, bool) {
 
 fn mysql_compound_event_body(lexemes: &[Lexeme<'_>]) -> bool {
     let is_word = |lexeme: Lexeme<'_>, expected: &str| matches!(lexeme.kind, LexemeKind::Word(word) if word.eq_ignore_ascii_case(expected));
+    let is_identifier =
+        |lexeme: Lexeme<'_>| matches!(lexeme.kind, LexemeKind::Word(_) | LexemeKind::Identifier);
     lexemes
-        .windows(2)
-        .any(|pair| is_word(pair[0], "DO") && is_word(pair[1], "BEGIN"))
-        || lexemes.windows(4).any(|part| {
-            is_word(part[0], "DO")
-                && matches!(part[1].kind, LexemeKind::Word(_) | LexemeKind::Identifier)
-                && matches!(part[2].kind, LexemeKind::Colon)
-                && is_word(part[3], "BEGIN")
+        .iter()
+        .enumerate()
+        .filter(|(_, lexeme)| is_word(**lexeme, "EVENT"))
+        .any(|(event, _)| {
+            let mut next = event + 1;
+            if !lexemes.get(next).copied().is_some_and(is_identifier) {
+                return false;
+            }
+            next += 1;
+            while matches!(
+                lexemes.get(next).map(|lexeme| lexeme.kind),
+                Some(LexemeKind::Dot)
+            ) && lexemes.get(next + 1).copied().is_some_and(is_identifier)
+            {
+                next += 2;
+            }
+            lexemes[next..]
+                .iter()
+                .enumerate()
+                .filter(|(_, lexeme)| is_word(**lexeme, "DO"))
+                .any(|(index, _)| {
+                    let body = &lexemes[next + index + 1..];
+                    body.first().is_some_and(|lexeme| is_word(*lexeme, "BEGIN"))
+                        || (body.first().copied().is_some_and(is_identifier)
+                            && matches!(
+                                body.get(1).map(|lexeme| lexeme.kind),
+                                Some(LexemeKind::Colon)
+                            )
+                            && body.get(2).is_some_and(|lexeme| is_word(*lexeme, "BEGIN")))
+                })
         })
 }
 
@@ -742,6 +810,18 @@ fn lexemes<'a>(sql: &'a str, kinds: &[ScanKind]) -> Vec<Lexeme<'a>> {
     let mut lexemes = Vec::new();
     let mut i = 0;
     while i < bytes.len() {
+        if kinds[i] == ScanKind::Quoted {
+            let start = i;
+            i += 1;
+            while i < bytes.len() && kinds[i] == ScanKind::Quoted {
+                i += 1;
+            }
+            lexemes.push(Lexeme {
+                offset: start,
+                kind: LexemeKind::Separator,
+            });
+            continue;
+        }
         if kinds[i] == ScanKind::QuotedIdentifier {
             let start = i;
             i += 1;
@@ -790,7 +870,9 @@ fn lexemes<'a>(sql: &'a str, kinds: &[ScanKind]) -> Vec<Lexeme<'a>> {
                 b')' => Some(LexemeKind::CloseParen),
                 b',' => Some(LexemeKind::Comma),
                 b':' => Some(LexemeKind::Colon),
+                b'.' => Some(LexemeKind::Dot),
                 b';' if kinds[i] == ScanKind::Sql => Some(LexemeKind::StatementEnd),
+                byte if !byte.is_ascii_whitespace() => Some(LexemeKind::Separator),
                 _ => None,
             };
             if let Some(kind) = kind {

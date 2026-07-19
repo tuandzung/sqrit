@@ -235,6 +235,43 @@ async fn data_modifying_cte_is_rejected_before_unbounded_execution() {
     assert_eq!(remaining.rows[0].get("count"), Some(&Value::Integer(1)));
 }
 
+#[tokio::test]
+#[ignore]
+async fn search_target_cycle_with_data_cte_is_rejected_before_execution() {
+    let table = unique_table("search_data_cte");
+    let adapter = setup_with_table(&table).await;
+    adapter
+        .execute(&format!(
+            "INSERT INTO \"{}\" (name, active) VALUES ('move', true)",
+            table
+        ))
+        .await
+        .unwrap();
+
+    let query = format!(
+        "WITH RECURSIVE walk(n) AS (VALUES (1) UNION ALL SELECT n + 1 FROM walk WHERE n < 2) SEARCH DEPTH FIRST BY n SET cycle, moved AS (DELETE FROM \"{}\" WHERE name = 'move' RETURNING name) SELECT name FROM moved",
+        table
+    );
+    let error = adapter.execute(&query).await.unwrap_err();
+    assert!(
+        error.to_string().contains("unbounded results"),
+        "unexpected error: {error}"
+    );
+    let error = adapter.execute_paginated(&query, 0, 2).await.unwrap_err();
+    assert!(
+        error.to_string().contains("unbounded results"),
+        "unexpected error: {error}"
+    );
+    let remaining = adapter
+        .execute(&format!(
+            "SELECT COUNT(*) AS count FROM \"{}\" WHERE name = 'move'",
+            table
+        ))
+        .await
+        .unwrap();
+    assert_eq!(remaining.rows[0].get("count"), Some(&Value::Integer(1)));
+}
+
 // #8 list_views after CREATE VIEW
 #[tokio::test]
 #[ignore]
