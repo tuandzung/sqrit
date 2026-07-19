@@ -16,7 +16,7 @@ use tokio::sync::mpsc;
 use crate::explorer::ExplorerState;
 use crate::results::ResultsState;
 use crate::results_render::{matched_ranges_for, render_cell};
-use crate::sql::{tokenize, TokenKind};
+use crate::sql::{tokenize, StatementRange, TokenKind};
 
 use crate::autocomplete::AutocompleteState;
 use crate::config::Config;
@@ -106,6 +106,7 @@ pub struct App {
     pub results: Option<crate::db::types::QueryResult>,
     pub query_status: QueryStatus,
     pub pending_query: Option<String>,
+    pub selected_statement: Option<StatementRange>,
     pub results_state: ResultsState,
     pub fuzzy_filter: crate::filter::FuzzyFilter,
     pub last_query: Option<String>,
@@ -168,6 +169,7 @@ impl App {
             results: None,
             query_status: QueryStatus::Idle,
             pending_query: None,
+            selected_statement: None,
             results_state: ResultsState::new(),
             fuzzy_filter: crate::filter::FuzzyFilter::new(),
             last_query: None,
@@ -207,6 +209,7 @@ impl App {
                     if query_id != self.query_id {
                         continue;
                     }
+                    self.clear_statement_status();
                     self.record_history(&status, result.as_ref());
                     self.query_status = status;
                     self.results_state.has_next_page = has_next_page;
@@ -326,8 +329,27 @@ impl App {
             }
         }
 
+        let had_selection = self.selected_statement.is_some();
+        let cursor_before = self.editor.cursor();
+        let text_before = had_selection.then(|| self.editor.text());
+
         let mode = self.mode;
         mode.handle_key(key, self);
+
+        if had_selection
+            && (self.editor.cursor() != cursor_before
+                || text_before.as_deref() != Some(self.editor.text().as_str()))
+        {
+            self.selected_statement = None;
+            self.clear_statement_status();
+        }
+    }
+
+    pub fn handle_paste_event(&mut self, text: &str) {
+        self.selected_statement = None;
+        self.clear_statement_status();
+        let mode = self.mode;
+        mode.handler().handle_paste(text, self);
     }
 
     /// Drop the active DB handle, clear cached schema + connection label,
@@ -387,11 +409,35 @@ impl App {
         }
     }
 
+    pub fn queue_query(&mut self, query: String, statement: Option<StatementRange>) {
+        self.results_state.reset_pagination();
+        if statement.is_none() {
+            self.clear_statement_status();
+        }
+        self.selected_statement = statement;
+        self.pending_query = Some(query);
+    }
+
+    pub fn queue_query_page(&mut self, query: String) {
+        self.clear_statement_status();
+        self.selected_statement = None;
+        self.pending_query = Some(query);
+    }
+
+    fn clear_statement_status(&mut self) {
+        if self.status_message.starts_with("running statement ") {
+            self.status_message.clear();
+        }
+    }
+
     pub fn execute_pending(&mut self) {
         let query = match self.pending_query.take() {
             Some(q) => q,
             None => return,
         };
+        if self.selected_statement.is_none() {
+            self.clear_statement_status();
+        }
 
         self.query_id += 1;
         let query_id = self.query_id;
@@ -399,7 +445,13 @@ impl App {
         self.query_started_at = Some(Instant::now());
         self.last_query = Some(query.clone());
 
-        let is_select = query.trim_start().to_uppercase().starts_with("SELECT");
+        let backend = self
+            .active_connection
+            .as_ref()
+            .and_then(|name| self.config.get_connection(name))
+            .map(|connection| connection.db_type.clone())
+            .unwrap_or(crate::config::DbType::Sqlite);
+        let can_paginate = crate::sql::query_can_paginate(&query, &backend);
 
         if let Some(ref db) = self.db {
             let db: Box<dyn Database> = db.clone_box();
@@ -409,7 +461,7 @@ impl App {
             let tx = self.async_tx.clone();
 
             tokio::spawn(async move {
-                let result = if is_select {
+                let result = if can_paginate {
                     db.execute_paginated(&query, offset, limit).await
                 } else {
                     db.execute(&query).await
@@ -417,7 +469,7 @@ impl App {
 
                 let msg = match result {
                     Ok(mut r) => {
-                        let has_next_page = if is_select {
+                        let has_next_page = if can_paginate {
                             if r.rows.len() > page_size {
                                 r.rows.truncate(page_size);
                                 true
@@ -493,7 +545,7 @@ impl App {
                         // V9: paste events bypass the space-prefix
                         // dispatcher — a pasted leading space must not
                         // arm the command palette.
-                        self.mode.handler().handle_paste(&text, self);
+                        self.handle_paste_event(&text);
                     }
                     _ => {}
                 }
@@ -1184,7 +1236,11 @@ impl App {
         };
 
         let status = if let QueryStatus::Error(e) = &self.query_status {
-            format!("ERR: {}", e)
+            if self.status_message.is_empty() {
+                format!("ERR: {}", e)
+            } else {
+                format!("ERR: {} | {}", e, self.status_message)
+            }
         } else if self.status_message.is_empty() {
             query_status.to_string()
         } else if query_status.is_empty() {
@@ -1212,22 +1268,52 @@ impl App {
         }
     }
 
+    fn push_editor_span(&self, spans: &mut Vec<Span<'_>>, text: &str, offset: usize, style: Style) {
+        let Some(selected) = self.selected_statement.as_ref().map(|s| &s.range) else {
+            spans.push(Span::styled(text.to_string(), style));
+            return;
+        };
+        let end = offset + text.len();
+        let selected_start = selected.start.max(offset).min(end);
+        let selected_end = selected.end.max(offset).min(end);
+
+        if offset < selected_start {
+            spans.push(Span::styled(
+                text[..selected_start - offset].to_string(),
+                style,
+            ));
+        }
+        if selected_start < selected_end {
+            spans.push(Span::styled(
+                text[selected_start - offset..selected_end - offset].to_string(),
+                style.bg(self.theme.selection_bg),
+            ));
+        }
+        if selected_end < end {
+            spans.push(Span::styled(
+                text[selected_end - offset..].to_string(),
+                style,
+            ));
+        }
+    }
+
     fn highlighted_lines(&self) -> Vec<Line<'_>> {
         let text = self.editor.text();
         let tokens = tokenize(&text);
         let mut lines: Vec<Line<'_>> = Vec::new();
         let mut current_spans: Vec<Span<'_>> = Vec::new();
+        let mut offset = 0usize;
 
         for token in tokens {
+            let style = self.token_style(&token.kind);
             for (i, line_text) in token.text.split('\n').enumerate() {
                 if i > 0 {
                     lines.push(Line::from(std::mem::take(&mut current_spans)));
+                    offset += 1;
                 }
                 if !line_text.is_empty() {
-                    current_spans.push(Span::styled(
-                        line_text.to_string(),
-                        self.token_style(&token.kind),
-                    ));
+                    self.push_editor_span(&mut current_spans, line_text, offset, style);
+                    offset += line_text.len();
                 }
             }
         }

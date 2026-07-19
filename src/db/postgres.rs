@@ -37,16 +37,6 @@ fn pg_row_to_value(row: &sqlx::postgres::PgRow, i: usize) -> Value {
     })
 }
 
-/// Determine if a SQL statement returns rows (SELECT, WITH/CTE, VALUES, TABLE).
-fn is_query_returning_rows(sql: &str) -> bool {
-    let first_word = super::skip_leading_comments(sql)
-        .split(|c: char| !c.is_alphanumeric() && c != '_')
-        .next()
-        .unwrap_or("")
-        .to_uppercase();
-    matches!(first_word.as_str(), "SELECT" | "WITH" | "VALUES" | "TABLE")
-}
-
 pub struct PgAdapter {
     url: String,
     // Pool retained for cancel()'s side connection and list_columns().
@@ -302,7 +292,16 @@ impl Database for PgAdapter {
     }
 
     async fn execute(&self, query: &str) -> anyhow::Result<QueryResult> {
-        let is_select = is_query_returning_rows(query);
+        let classification = crate::sql::classify_query(query, &crate::config::DbType::Postgres);
+        if classification
+            .as_ref()
+            .is_ok_and(|query| query.returns_rows && !query.can_paginate)
+        {
+            anyhow::bail!(
+                "cannot safely execute row-producing PostgreSQL data-modifying CTE without loading unbounded results"
+            );
+        }
+        let is_select = classification.is_ok_and(|query| query.returns_rows);
         let mut guard = self.exec_conn.lock().await;
         let conn = guard
             .as_mut()
@@ -385,6 +384,9 @@ impl Database for PgAdapter {
         offset: u64,
         limit: u64,
     ) -> anyhow::Result<QueryResult> {
+        if !crate::sql::query_can_paginate(query, &crate::config::DbType::Postgres) {
+            return self.execute(query).await;
+        }
         let query = query.trim_end().trim_end_matches(';');
         let paginated = format!(
             "SELECT * FROM ({}) AS sub LIMIT {} OFFSET {}",

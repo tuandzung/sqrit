@@ -32,7 +32,9 @@ A schema object's category. Explorer uses it to group objects, decide whether `s
 | Sequence | — | ✓ | — | — |
 
 ### Query
-SQL text edited in the query pane. Executed on `Enter` in Normal mode or `Ctrl+Enter` in Insert mode.
+SQL text edited in the query pane. `Enter` in Normal mode and `Ctrl+Enter` in Insert mode execute the whole buffer. `gs` in Normal mode executes only the statement under the cursor and records only that source slice in history.
+
+Statement boundaries use every real semicolon when the buffer contains one; otherwise blank lines split statements. Quotes, SQLite bracketed identifiers, comments, backticks, and PostgreSQL dollar blocks protect internal delimiters with backend-aware backslash rules. PostgreSQL comments nest; MySQL `#` is backend-only, `--` requires following whitespace/control, and executable comments protect delimiters while exposing executable words. A malformed protected region fails closed. Definition-leading SQLite triggers, MySQL procedure/function/trigger/event bodies (including compound `ALTER EVENT`), and PostgreSQL `BEGIN ATOMIC` routines also fail closed because their inner semicolons cannot be separated safely without a block parser; MySQL `SHOW CREATE` metadata remains allowed. The shared query classifier resolves a `WITH` query's depth-zero main statement so CTE-led DML does not enter the paginated row path. Fresh execution resets result pagination; `PgUp` and `PgDn` preserve their chosen offset. The executed statement keeps a `selection_bg` wash until cursor movement, an edit, paste, or another execution.
 
 ### Results
 Output from query execution. Rendered as a paginated, scrollable table.

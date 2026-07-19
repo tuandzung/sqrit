@@ -8,24 +8,6 @@ pub mod types;
 use async_trait::async_trait;
 use types::{ColumnInfo, QueryResult, SchemaInfo};
 
-/// Skip leading whitespace, line (`--`), and block (`/* */`) comments and
-/// return the remaining SQL with leading whitespace also trimmed. Shared by
-/// adapter helpers that need to identify the first real keyword
-/// (e.g. SELECT vs DDL, BEGIN/COMMIT tracking).
-pub(crate) fn skip_leading_comments(sql: &str) -> &str {
-    let mut rest = sql;
-    loop {
-        let trimmed = rest.trim_start();
-        if let Some(stripped) = trimmed.strip_prefix("--") {
-            rest = stripped.find('\n').map_or("", |i| &stripped[i + 1..]);
-        } else if let Some(stripped) = trimmed.strip_prefix("/*") {
-            rest = stripped.find("*/").map_or("", |i| &stripped[i + 2..]);
-        } else {
-            return trimmed;
-        }
-    }
-}
-
 #[async_trait]
 pub trait Database: Send + Sync {
     async fn connect(&mut self) -> anyhow::Result<()>;
@@ -58,4 +40,138 @@ pub trait Database: Send + Sync {
     }
 
     fn clone_box(&self) -> Box<dyn Database>;
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::config::DbType;
+    use crate::sql::{classify_query, query_returns_rows};
+
+    #[test]
+    fn row_returning_detection_skips_comments_and_covers_all_keywords() {
+        for sql in [
+            "SELECT 1",
+            "WITH q AS (SELECT 1) SELECT * FROM q",
+            "VALUES (1)",
+            "TABLE users",
+            "-- comment\n/* comment */ SELECT 1",
+        ] {
+            assert!(query_returns_rows(sql, &DbType::Postgres), "{sql}");
+        }
+        assert!(!query_returns_rows(
+            "INSERT INTO t VALUES (1)",
+            &DbType::Postgres
+        ));
+    }
+
+    #[test]
+    fn mysql_hash_comments_are_skipped_only_for_mysql() {
+        let sql = "# comment\nSELECT 1";
+        assert!(query_returns_rows(sql, &DbType::Mysql));
+        assert!(!query_returns_rows(sql, &DbType::Postgres));
+    }
+
+    #[test]
+    fn postgres_nested_block_comments_are_skipped_to_matching_depth() {
+        let sql = "/* outer /* inner */ still outer */ SELECT 1";
+        assert!(query_returns_rows(sql, &DbType::Postgres));
+    }
+
+    #[test]
+    fn mysql_dash_comment_requires_following_whitespace() {
+        assert!(query_returns_rows("-- comment\nSELECT 1", &DbType::Mysql));
+        assert!(!query_returns_rows("--x\nSELECT 1", &DbType::Mysql));
+    }
+
+    #[test]
+    fn mysql_executable_comments_contribute_words() {
+        assert!(query_returns_rows("/*!50003 SELECT 1 */", &DbType::Mysql));
+        assert!(!query_returns_rows(
+            "/*!50003 SELECT 1 */",
+            &DbType::Postgres
+        ));
+    }
+
+    #[test]
+    fn cte_row_detection_uses_the_depth_zero_main_statement() {
+        for sql in [
+            "WITH q AS (SELECT 1) SELECT * FROM q",
+            "WITH q AS (SELECT 1) VALUES (1)",
+            "WITH q AS (SELECT 1) TABLE q",
+            "WITH a AS (SELECT 1), b AS (SELECT * FROM a) SELECT * FROM b",
+        ] {
+            assert!(query_returns_rows(sql, &DbType::Postgres), "{sql}");
+        }
+
+        for sql in [
+            "WITH q AS (SELECT 1) INSERT INTO t SELECT * FROM q",
+            "WITH q AS (SELECT 1) UPDATE t SET n = 2",
+            "WITH q AS (SELECT 1) DELETE FROM t",
+        ] {
+            assert!(!query_returns_rows(sql, &DbType::Postgres), "{sql}");
+        }
+    }
+
+    #[test]
+    fn postgres_search_and_cycle_clauses_precede_the_main_statement() {
+        let recursive = "WITH RECURSIVE t(a, b, set) AS (VALUES (1, 2, 3) UNION ALL SELECT a + 1, b + 1, set + 1 FROM t WHERE a < 3)";
+        for suffix in [
+            "SEARCH DEPTH FIRST BY a, b SET ordercol SELECT a FROM t",
+            "SEARCH DEPTH FIRST BY set, b SET ordercol SELECT a FROM t",
+            "SEARCH DEPTH FIRST BY a, set SET ordercol SELECT a FROM t",
+            "CYCLE a, b SET is_cycle USING path SELECT a FROM t",
+            "CYCLE set, b SET is_cycle USING path SELECT a FROM t",
+            "CYCLE a, set SET is_cycle USING path SELECT a FROM t",
+            "SEARCH DEPTH FIRST BY \"set\", b SET ordercol SELECT a FROM t",
+            "SEARCH DEPTH FIRST BY a, b SET cycle CYCLE a, b SET is_cycle USING path SELECT a FROM t",
+            "SEARCH BREADTH FIRST BY a, b SET ordercol CYCLE a, b SET is_cycle USING path VALUES (1)",
+            "SEARCH DEPTH FIRST BY a, b SET ordercol, q AS (SELECT a FROM t) TABLE q",
+            "SEARCH DEPTH FIRST BY set, b SET ordercol CYCLE a, set SET is_cycle USING path, q AS (SELECT a FROM t) TABLE q",
+            "CYCLE a, b SET cycle USING search SELECT a FROM t",
+            "CYCLE a, b SET \"cycle\" USING \"using\" SELECT a FROM t",
+        ] {
+            let sql = format!("{recursive} {suffix}");
+            assert!(query_returns_rows(&sql, &DbType::Postgres), "{sql}");
+        }
+
+        for suffix in [
+            "SEARCH DEPTH FIRST BY a, b SET ordercol INSERT INTO sink SELECT a FROM t",
+            "CYCLE a, b SET is_cycle USING path UPDATE sink SET n = 1",
+            "SEARCH DEPTH FIRST BY a, b SET ordercol CYCLE a, b SET is_cycle USING path DELETE FROM sink",
+            "SEARCH DEPTH FIRST BY set, b SET ordercol CYCLE a, set SET is_cycle USING path DELETE FROM sink",
+        ] {
+            let sql = format!("{recursive} {suffix}");
+            assert!(!query_returns_rows(&sql, &DbType::Postgres), "{sql}");
+        }
+    }
+
+    #[test]
+    fn postgres_data_modifying_cte_returns_rows_but_cannot_be_wrapped() {
+        let query = classify_query(
+            "WITH moved AS (DELETE FROM source RETURNING id) SELECT id FROM moved",
+            &DbType::Postgres,
+        )
+        .unwrap();
+        assert!(query.returns_rows);
+        assert!(!query.can_paginate);
+
+        let query = classify_query(
+            "WITH source AS (SELECT 1 AS id) SELECT id FROM source",
+            &DbType::Postgres,
+        )
+        .unwrap();
+        assert!(query.can_paginate);
+    }
+
+    #[test]
+    fn postgres_search_target_precedes_a_data_modifying_cte() {
+        let query = classify_query(
+            "WITH RECURSIVE walk(n) AS (VALUES (1) UNION ALL SELECT n + 1 FROM walk WHERE n < 2) SEARCH DEPTH FIRST BY n SET cycle, moved AS (DELETE FROM source RETURNING id) SELECT id FROM moved",
+            &DbType::Postgres,
+        )
+        .unwrap();
+
+        assert!(query.returns_rows);
+        assert!(!query.can_paginate);
+    }
 }

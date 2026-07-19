@@ -20,6 +20,23 @@ fn insert_handle_paste_inserts_multi_line_text() {
     assert_eq!(line_count, 3);
 }
 
+#[test]
+fn app_paste_path_clears_statement_highlight_and_feedback() {
+    let mut app = common::test_app();
+    app.mode = Mode::QueryInsert;
+    app.editor.insert_str("SELECT 1; SELECT 2;");
+    app.selected_statement =
+        sqrit::sql::statement_at_cursor(&app.editor.text(), (0, 15), sqrit::config::DbType::Sqlite)
+            .unwrap();
+    app.status_message = "running statement 2/2".to_string();
+
+    app.handle_paste_event(" -- edited");
+
+    assert!(app.editor.text().ends_with(" -- edited"));
+    assert!(app.selected_statement.is_none());
+    assert!(app.status_message.is_empty());
+}
+
 // Cycle 2: Defensive fallback — Ctrl+J in Insert mode inserts a newline,
 // not literal 'j'. Locks the bug at the key-event layer for terminals
 // that don't support bracketed paste.
