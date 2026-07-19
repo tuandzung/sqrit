@@ -179,6 +179,44 @@ fn mysql_labeled_alter_event_compound_definition_fails_closed() {
 }
 
 #[test]
+fn mysql_scheduled_compound_event_variables_fail_closed() {
+    for sql in [
+        "ALTER EVENT cleanup ON SCHEDULE AT @do + INTERVAL 1 DAY DO BEGIN DELETE FROM log; INSERT INTO audit VALUES (1); END;",
+        "ALTER EVENT cleanup ON SCHEDULE EVERY 1 DAY STARTS @do + INTERVAL 1 DAY DO BEGIN DELETE FROM log; INSERT INTO audit VALUES (1); END;",
+        "ALTER EVENT cleanup ON SCHEDULE EVERY 1 DAY ENDS @do + INTERVAL 1 DAY DO BEGIN DELETE FROM log; INSERT INTO audit VALUES (1); END;",
+        "ALTER EVENT cleanup ON SCHEDULE AT FROM_UNIXTIME(@@session.timestamp) + INTERVAL 1 DAY DO BEGIN DELETE FROM log; INSERT INTO audit VALUES (1); END;",
+    ] {
+        let error = statement_at_cursor(sql, (0, 90), DbType::Mysql).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "cannot safely scan MySQL compound definition",
+            "{sql}"
+        );
+    }
+}
+
+#[test]
+fn mysql_microsecond_schedule_units_reach_compound_body() {
+    for unit in [
+        "MICROSECOND",
+        "SECOND_MICROSECOND",
+        "MINUTE_MICROSECOND",
+        "HOUR_MICROSECOND",
+        "DAY_MICROSECOND",
+    ] {
+        let sql = format!(
+            "ALTER EVENT cleanup ON SCHEDULE EVERY 1 {unit} DO BEGIN DELETE FROM log; INSERT INTO audit VALUES (1); END;"
+        );
+        let error = statement_at_cursor(&sql, (0, 90), DbType::Mysql).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "cannot safely scan MySQL compound definition",
+            "{sql}"
+        );
+    }
+}
+
+#[test]
 fn mysql_executable_comment_event_openers_fail_closed() {
     for sql in [
         "ALTER EVENT cleanup DO /*!50000 BEGIN */ DELETE FROM log; INSERT INTO audit VALUES (1); END;",
@@ -204,6 +242,7 @@ fn mysql_noncompound_alter_event_remains_selectable() {
         "ALTER EVENT cleanup DO UPDATE jobs SET x = do / (begin - 1);",
         "ALTER EVENT cleanup DO UPDATE do begin SET x = 1;",
         "ALTER EVENT cleanup DO /*!50000 UPDATE jobs SET x = do + begin */;",
+        "ALTER EVENT cleanup ON SCHEDULE AT @do + INTERVAL 1 DAY DO UPDATE do begin SET x = do + begin;",
     ] {
         assert_eq!(selected(sql, (0, 30), DbType::Mysql).0, sql);
     }

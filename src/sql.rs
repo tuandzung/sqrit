@@ -655,13 +655,18 @@ fn mysql_event_body_do(lexemes: &[Lexeme<'_>], mut next: usize) -> Option<usize>
             "HOUR",
             "MINUTE",
             "SECOND",
+            "MICROSECOND",
             "YEAR_MONTH",
             "DAY_HOUR",
             "DAY_MINUTE",
             "DAY_SECOND",
+            "DAY_MICROSECOND",
             "HOUR_MINUTE",
             "HOUR_SECOND",
+            "HOUR_MICROSECOND",
             "MINUTE_SECOND",
+            "MINUTE_MICROSECOND",
+            "SECOND_MICROSECOND",
         ]
         .iter()
         .any(|unit| word.eq_ignore_ascii_case(unit))
@@ -887,11 +892,31 @@ fn unsafe_compound_ddl(analysis: &SqlAnalysis<'_>, backend: &DbType) -> Option<&
     None
 }
 
-fn lexemes<'a>(sql: &'a str, kinds: &[ScanKind]) -> Vec<Lexeme<'a>> {
+fn lexemes<'a>(sql: &'a str, kinds: &[ScanKind], backend: &DbType) -> Vec<Lexeme<'a>> {
     let bytes = sql.as_bytes();
     let mut lexemes = Vec::new();
     let mut i = 0;
     while i < bytes.len() {
+        if matches!(backend, DbType::Mysql) && bytes[i] == b'@' && kinds[i].contributes_words() {
+            let start = i;
+            i += 1;
+            if bytes.get(i) == Some(&b'@') && kinds[i].contributes_words() {
+                i += 1;
+            }
+            while i < bytes.len()
+                && kinds[i].contributes_words()
+                && (bytes[i].is_ascii_alphanumeric()
+                    || matches!(bytes[i], b'_' | b'$' | b'.')
+                    || bytes[i] >= 0x80)
+            {
+                i += 1;
+            }
+            lexemes.push(Lexeme {
+                offset: start,
+                kind: LexemeKind::Separator,
+            });
+            continue;
+        }
         if kinds[i] == ScanKind::Quoted {
             let start = i;
             i += 1;
@@ -1029,7 +1054,7 @@ fn classify<'a>(sql: &'a str, backend: &DbType) -> Result<SqlAnalysis<'a>, State
             _ => i + 1,
         };
     }
-    let lexemes = lexemes(sql, &kinds);
+    let lexemes = lexemes(sql, &kinds, backend);
     Ok(SqlAnalysis {
         text: sql,
         kinds,
