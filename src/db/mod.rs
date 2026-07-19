@@ -45,7 +45,7 @@ pub trait Database: Send + Sync {
 #[cfg(test)]
 mod tests {
     use crate::config::DbType;
-    use crate::sql::query_returns_rows;
+    use crate::sql::{classify_query, query_returns_rows};
 
     #[test]
     fn row_returning_detection_skips_comments_and_covers_all_keywords() {
@@ -110,5 +110,47 @@ mod tests {
         ] {
             assert!(!query_returns_rows(sql, &DbType::Postgres), "{sql}");
         }
+    }
+
+    #[test]
+    fn postgres_search_and_cycle_clauses_precede_the_main_statement() {
+        let recursive =
+            "WITH RECURSIVE t(n) AS (VALUES (1) UNION ALL SELECT n + 1 FROM t WHERE n < 3)";
+        for suffix in [
+            "SEARCH DEPTH FIRST BY n SET ordercol SELECT n FROM t",
+            "CYCLE n SET is_cycle USING path SELECT n FROM t",
+            "SEARCH BREADTH FIRST BY n SET ordercol CYCLE n SET is_cycle USING path VALUES (1)",
+            "SEARCH DEPTH FIRST BY n SET ordercol, q AS (SELECT n FROM t) TABLE q",
+        ] {
+            let sql = format!("{recursive} {suffix}");
+            assert!(query_returns_rows(&sql, &DbType::Postgres), "{sql}");
+        }
+
+        for suffix in [
+            "SEARCH DEPTH FIRST BY n SET ordercol INSERT INTO sink SELECT n FROM t",
+            "CYCLE n SET is_cycle USING path UPDATE sink SET n = 1",
+            "SEARCH DEPTH FIRST BY n SET ordercol CYCLE n SET is_cycle USING path DELETE FROM sink",
+        ] {
+            let sql = format!("{recursive} {suffix}");
+            assert!(!query_returns_rows(&sql, &DbType::Postgres), "{sql}");
+        }
+    }
+
+    #[test]
+    fn postgres_data_modifying_cte_returns_rows_but_cannot_be_wrapped() {
+        let query = classify_query(
+            "WITH moved AS (DELETE FROM source RETURNING id) SELECT id FROM moved",
+            &DbType::Postgres,
+        )
+        .unwrap();
+        assert!(query.returns_rows);
+        assert!(!query.can_paginate);
+
+        let query = classify_query(
+            "WITH source AS (SELECT 1 AS id) SELECT id FROM source",
+            &DbType::Postgres,
+        )
+        .unwrap();
+        assert!(query.can_paginate);
     }
 }

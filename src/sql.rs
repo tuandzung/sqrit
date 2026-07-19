@@ -405,6 +405,7 @@ struct Lexeme<'a> {
 pub(crate) struct QueryClassification<'a> {
     pub(crate) has_executable_sql: bool,
     pub(crate) returns_rows: bool,
+    pub(crate) can_paginate: bool,
     pub(crate) words: Vec<&'a str>,
 }
 
@@ -441,6 +442,10 @@ pub fn query_returns_rows(sql: &str, backend: &DbType) -> bool {
     classify_query(sql, backend).is_ok_and(|query| query.returns_rows)
 }
 
+pub(crate) fn query_can_paginate(sql: &str, backend: &DbType) -> bool {
+    classify_query(sql, backend).is_ok_and(|query| query.can_paginate)
+}
+
 pub(crate) fn classify_query<'a>(
     sql: &'a str,
     backend: &DbType,
@@ -454,48 +459,70 @@ pub(crate) fn classify_query<'a>(
             _ => None,
         })
         .collect::<Vec<_>>();
-    let returns_rows = main_statement_word(&analysis.lexemes).is_some_and(|word| {
+    let (main_word, has_data_modifying_cte) = statement_shape(&analysis.lexemes);
+    let returns_rows = main_word.is_some_and(|word| {
         ["SELECT", "VALUES", "TABLE"]
             .iter()
             .any(|keyword| word.eq_ignore_ascii_case(keyword))
     });
+    let can_paginate =
+        returns_rows && !(matches!(backend, DbType::Postgres) && has_data_modifying_cte);
     let has_executable_sql = trim_executable(sql, &analysis.kinds, 0..sql.len()).is_some();
     Ok(QueryClassification {
         has_executable_sql,
         returns_rows,
+        can_paginate,
         words,
     })
 }
 
-fn main_statement_word<'a>(lexemes: &[Lexeme<'a>]) -> Option<&'a str> {
-    let first = lexemes
+fn statement_shape<'a>(lexemes: &[Lexeme<'a>]) -> (Option<&'a str>, bool) {
+    let Some(first) = lexemes
         .iter()
-        .position(|lexeme| matches!(lexeme.kind, LexemeKind::Word(_) | LexemeKind::StatementEnd))?;
+        .position(|lexeme| matches!(lexeme.kind, LexemeKind::Word(_) | LexemeKind::StatementEnd))
+    else {
+        return (None, false);
+    };
     let LexemeKind::Word(first_word) = lexemes[first].kind else {
-        return None;
+        return (None, false);
     };
     if !first_word.eq_ignore_ascii_case("WITH") {
-        return Some(first_word);
+        return (Some(first_word), false);
     }
 
     let mut depth = 0usize;
     let mut saw_as = false;
     let mut in_body = false;
+    let mut first_body_word = false;
+    let mut has_data_modifying_cte = false;
     let mut completed_body = false;
     for lexeme in &lexemes[first + 1..] {
         match lexeme.kind {
-            LexemeKind::StatementEnd => return None,
-            LexemeKind::Word(word) if depth == 0 => {
-                if completed_body {
-                    return Some(word);
+            LexemeKind::StatementEnd => return (None, has_data_modifying_cte),
+            LexemeKind::Word(word) => {
+                if in_body && first_body_word {
+                    has_data_modifying_cte |= ["INSERT", "UPDATE", "DELETE"]
+                        .iter()
+                        .any(|keyword| word.eq_ignore_ascii_case(keyword));
+                    first_body_word = false;
                 }
-                if word.eq_ignore_ascii_case("AS") {
-                    saw_as = true;
+                if depth == 0 {
+                    if completed_body
+                        && ["SELECT", "VALUES", "TABLE", "INSERT", "UPDATE", "DELETE"]
+                            .iter()
+                            .any(|keyword| word.eq_ignore_ascii_case(keyword))
+                    {
+                        return (Some(word), has_data_modifying_cte);
+                    }
+                    if word.eq_ignore_ascii_case("AS") {
+                        saw_as = true;
+                    }
                 }
             }
             LexemeKind::OpenParen => {
                 if depth == 0 && saw_as {
                     in_body = true;
+                    first_body_word = true;
                 }
                 depth += 1;
             }
@@ -508,12 +535,13 @@ fn main_statement_word<'a>(lexemes: &[Lexeme<'a>]) -> Option<&'a str> {
             LexemeKind::Comma if depth == 0 && completed_body => {
                 saw_as = false;
                 in_body = false;
+                first_body_word = false;
                 completed_body = false;
             }
             _ => {}
         }
     }
-    None
+    (None, has_data_modifying_cte)
 }
 
 fn unsafe_compound_ddl(analysis: &SqlAnalysis<'_>, backend: &DbType) -> Option<&'static str> {
@@ -538,15 +566,32 @@ fn unsafe_compound_ddl(analysis: &SqlAnalysis<'_>, backend: &DbType) -> Option<&
         };
         match backend {
             DbType::Sqlite => {
-                if !first.eq_ignore_ascii_case("CREATE") {
+                let mut create = 0;
+                if first.eq_ignore_ascii_case("EXPLAIN") {
+                    create = if words
+                        .get(1)
+                        .is_some_and(|word| word.eq_ignore_ascii_case("QUERY"))
+                        && words
+                            .get(2)
+                            .is_some_and(|word| word.eq_ignore_ascii_case("PLAN"))
+                    {
+                        3
+                    } else {
+                        1
+                    };
+                }
+                if !words
+                    .get(create)
+                    .is_some_and(|word| word.eq_ignore_ascii_case("CREATE"))
+                {
                     continue;
                 }
-                let object = if words.get(1).is_some_and(|word| {
+                let object = if words.get(create + 1).is_some_and(|word| {
                     word.eq_ignore_ascii_case("TEMP") || word.eq_ignore_ascii_case("TEMPORARY")
                 }) {
-                    2
+                    create + 2
                 } else {
-                    1
+                    create + 1
                 };
                 if words
                     .get(object)
@@ -567,9 +612,17 @@ fn unsafe_compound_ddl(analysis: &SqlAnalysis<'_>, backend: &DbType) -> Option<&
                                 .iter()
                                 .skip(2)
                                 .any(|word| word.eq_ignore_ascii_case("EVENT")));
-                    let compound_body = words.windows(2).any(|pair| {
-                        pair[0].eq_ignore_ascii_case("DO") && pair[1].eq_ignore_ascii_case("BEGIN")
-                    });
+                    let compound_body = words
+                        .iter()
+                        .position(|word| word.eq_ignore_ascii_case("DO"))
+                        .is_some_and(|do_word| {
+                            words
+                                .get(do_word + 1)
+                                .is_some_and(|word| word.eq_ignore_ascii_case("BEGIN"))
+                                || words
+                                    .get(do_word + 2)
+                                    .is_some_and(|word| word.eq_ignore_ascii_case("BEGIN"))
+                        });
                     if event && compound_body {
                         return Some("MySQL compound definition");
                     }

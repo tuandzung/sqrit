@@ -451,7 +451,7 @@ impl App {
             .and_then(|name| self.config.get_connection(name))
             .map(|connection| connection.db_type.clone())
             .unwrap_or(crate::config::DbType::Sqlite);
-        let returns_rows = crate::sql::query_returns_rows(&query, &backend);
+        let can_paginate = crate::sql::query_can_paginate(&query, &backend);
 
         if let Some(ref db) = self.db {
             let db: Box<dyn Database> = db.clone_box();
@@ -461,7 +461,7 @@ impl App {
             let tx = self.async_tx.clone();
 
             tokio::spawn(async move {
-                let result = if returns_rows {
+                let result = if can_paginate {
                     db.execute_paginated(&query, offset, limit).await
                 } else {
                     db.execute(&query).await
@@ -469,7 +469,7 @@ impl App {
 
                 let msg = match result {
                     Ok(mut r) => {
-                        let has_next_page = if returns_rows {
+                        let has_next_page = if can_paginate {
                             if r.rows.len() > page_size {
                                 r.rows.truncate(page_size);
                                 true

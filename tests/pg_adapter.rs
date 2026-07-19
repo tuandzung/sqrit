@@ -198,6 +198,40 @@ async fn execute_paginated_respects_offset_and_limit() {
     assert_eq!(name_val, &Value::Text("user2".into()));
 }
 
+#[tokio::test]
+#[ignore]
+async fn data_modifying_cte_remains_top_level_when_pagination_is_requested() {
+    let table = unique_table("data_cte_page");
+    let adapter = setup_with_table(&table).await;
+    adapter
+        .execute(&format!(
+            "INSERT INTO \"{}\" (name, active) VALUES ('move', true)",
+            table
+        ))
+        .await
+        .unwrap();
+
+    let query = format!(
+        "WITH moved AS (DELETE FROM \"{}\" WHERE name = 'move' RETURNING name) SELECT name FROM moved",
+        table
+    );
+    let result = adapter.execute_paginated(&query, 0, 2).await.unwrap();
+
+    assert_eq!(result.rows.len(), 1);
+    assert_eq!(
+        result.rows[0].get("name"),
+        Some(&Value::Text("move".into()))
+    );
+    let remaining = adapter
+        .execute(&format!(
+            "SELECT COUNT(*) AS count FROM \"{}\" WHERE name = 'move'",
+            table
+        ))
+        .await
+        .unwrap();
+    assert_eq!(remaining.rows[0].get("count"), Some(&Value::Integer(0)));
+}
+
 // #8 list_views after CREATE VIEW
 #[tokio::test]
 #[ignore]

@@ -375,6 +375,9 @@ impl Database for PgAdapter {
         offset: u64,
         limit: u64,
     ) -> anyhow::Result<QueryResult> {
+        if !crate::sql::query_can_paginate(query, &crate::config::DbType::Postgres) {
+            return self.execute(query).await;
+        }
         let query = query.trim_end().trim_end_matches(';');
         let paginated = format!(
             "SELECT * FROM ({}) AS sub LIMIT {} OFFSET {}",

@@ -96,6 +96,30 @@ fn sqlite_multi_action_trigger_fails_closed() {
 }
 
 #[test]
+fn sqlite_explain_trigger_fails_closed_with_cursor_in_body() {
+    for prefix in ["EXPLAIN", "EXPLAIN QUERY PLAN"] {
+        let sql = format!(
+            "{prefix} CREATE TRIGGER audit AFTER UPDATE ON users\nBEGIN\n  DELETE FROM log;\n  INSERT INTO log VALUES ('updated');\nEND;"
+        );
+        let error = statement_at_cursor(&sql, (2, 4), DbType::Sqlite).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "cannot safely scan SQLite trigger definition",
+            "{prefix}"
+        );
+    }
+}
+
+#[test]
+fn sqlite_ordinary_explain_statement_remains_selectable() {
+    let sql = "EXPLAIN SELECT 1; SELECT 2;";
+    assert_eq!(
+        selected(sql, (0, 8), DbType::Sqlite),
+        ("EXPLAIN SELECT 1;".into(), 1, 2)
+    );
+}
+
+#[test]
 fn mysql_compound_definitions_fail_closed() {
     for sql in [
         "CREATE PROCEDURE p() BEGIN SELECT 1; SELECT 2; END;",
@@ -125,6 +149,17 @@ fn mysql_executable_comment_words_participate_in_compound_safety() {
 fn mysql_alter_event_compound_definition_fails_closed() {
     let sql = "ALTER EVENT cleanup DO BEGIN DELETE FROM log; INSERT INTO audit VALUES (1); END;";
     let error = statement_at_cursor(sql, (0, 48), DbType::Mysql).unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        "cannot safely scan MySQL compound definition"
+    );
+}
+
+#[test]
+fn mysql_labeled_alter_event_compound_definition_fails_closed() {
+    let sql =
+        "ALTER EVENT cleanup DO body: BEGIN DELETE FROM log; INSERT INTO audit VALUES (1); END;";
+    let error = statement_at_cursor(sql, (0, 55), DbType::Mysql).unwrap_err();
     assert_eq!(
         error.to_string(),
         "cannot safely scan MySQL compound definition"
