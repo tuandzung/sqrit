@@ -671,8 +671,16 @@ fn mysql_event_body_do(lexemes: &[Lexeme<'_>], mut next: usize) -> Option<usize>
         .iter()
         .any(|unit| word.eq_ignore_ascii_case(unit))
     };
+    let is_option = |word: &str| {
+        [
+            "STARTS", "ENDS", "ON", "RENAME", "ENABLE", "DISABLE", "COMMENT", "DO",
+        ]
+        .iter()
+        .any(|option| word.eq_ignore_ascii_case(option))
+    };
 
     let mut state = OptionState::Options;
+    let mut expression_depth = 0usize;
     while let Some(lexeme) = lexemes.get(next).copied() {
         match state {
             OptionState::Options if is_word(lexeme, "RENAME") => {
@@ -714,7 +722,15 @@ fn mysql_event_body_do(lexemes: &[Lexeme<'_>], mut next: usize) -> Option<usize>
             {
                 state = OptionState::Options;
             }
-            OptionState::ScheduleAt if is_word(lexeme, "DO") => return Some(next),
+            OptionState::ScheduleAt => match lexeme.kind {
+                LexemeKind::OpenParen => expression_depth += 1,
+                LexemeKind::CloseParen if expression_depth > 0 => expression_depth -= 1,
+                LexemeKind::Word(word) if expression_depth == 0 && is_option(word) => {
+                    state = OptionState::Options;
+                    continue;
+                }
+                _ => {}
+            },
             _ => {}
         }
         next += 1;

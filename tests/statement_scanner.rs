@@ -196,6 +196,40 @@ fn mysql_scheduled_compound_event_variables_fail_closed() {
 }
 
 #[test]
+fn mysql_scheduled_rename_targets_named_do_fail_closed() {
+    for sql in [
+        "ALTER EVENT cleanup ON SCHEDULE AT CURRENT_TIMESTAMP RENAME TO do DO BEGIN DELETE FROM log; INSERT INTO audit VALUES (1); END;",
+        "ALTER EVENT cleanup ON SCHEDULE EVERY 1 DAY STARTS CURRENT_TIMESTAMP RENAME TO do DO BEGIN DELETE FROM log; INSERT INTO audit VALUES (1); END;",
+        "ALTER EVENT cleanup ON SCHEDULE EVERY 1 DAY ENDS CURRENT_TIMESTAMP RENAME TO do DO BEGIN DELETE FROM log; INSERT INTO audit VALUES (1); END;",
+        "ALTER EVENT cleanup ON SCHEDULE AT CURRENT_TIMESTAMP RENAME TO sqrit_test.`do` DO BEGIN DELETE FROM log; INSERT INTO audit VALUES (1); END;",
+    ] {
+        let error = statement_at_cursor(sql, (0, 90), DbType::Mysql).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "cannot safely scan MySQL compound definition",
+            "{sql}"
+        );
+    }
+}
+
+#[test]
+fn mysql_nested_schedules_and_following_options_fail_closed() {
+    for sql in [
+        "ALTER EVENT cleanup ON SCHEDULE AT (SELECT CURRENT_TIMESTAMP + INTERVAL 1 DAY AS do FROM DUAL) ON COMPLETION PRESERVE RENAME TO do ENABLE COMMENT 'round9' DO BEGIN DELETE FROM log; INSERT INTO audit VALUES (1); END;",
+        "ALTER EVENT cleanup ON SCHEDULE AT CURRENT_TIMESTAMP ON COMPLETION PRESERVE DO BEGIN DELETE FROM log; INSERT INTO audit VALUES (1); END;",
+        "ALTER EVENT cleanup ON SCHEDULE AT CURRENT_TIMESTAMP ENABLE DO BEGIN DELETE FROM log; INSERT INTO audit VALUES (1); END;",
+        "ALTER EVENT cleanup ON SCHEDULE AT CURRENT_TIMESTAMP DISABLE ON SLAVE COMMENT 'round9' DO BEGIN DELETE FROM log; INSERT INTO audit VALUES (1); END;",
+    ] {
+        let error = statement_at_cursor(sql, (0, 100), DbType::Mysql).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "cannot safely scan MySQL compound definition",
+            "{sql}"
+        );
+    }
+}
+
+#[test]
 fn mysql_microsecond_schedule_units_reach_compound_body() {
     for unit in [
         "MICROSECOND",
@@ -243,6 +277,8 @@ fn mysql_noncompound_alter_event_remains_selectable() {
         "ALTER EVENT cleanup DO UPDATE do begin SET x = 1;",
         "ALTER EVENT cleanup DO /*!50000 UPDATE jobs SET x = do + begin */;",
         "ALTER EVENT cleanup ON SCHEDULE AT @do + INTERVAL 1 DAY DO UPDATE do begin SET x = do + begin;",
+        "ALTER EVENT cleanup ON SCHEDULE AT CURRENT_TIMESTAMP RENAME TO do ENABLE DO UPDATE do begin SET x = do + begin;",
+        "ALTER EVENT cleanup ON SCHEDULE AT (SELECT CURRENT_TIMESTAMP + INTERVAL 1 DAY AS do FROM DUAL) ON COMPLETION PRESERVE DO UPDATE do begin SET x = do + begin;",
     ] {
         assert_eq!(selected(sql, (0, 30), DbType::Mysql).0, sql);
     }
