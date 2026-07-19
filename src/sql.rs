@@ -496,6 +496,7 @@ fn statement_shape<'a>(lexemes: &[Lexeme<'a>]) -> (Option<&'a str>, bool) {
     let mut first_body_word = false;
     let mut has_data_modifying_cte = false;
     let mut completed_body = false;
+    let mut in_modifier_column_list = false;
     for lexeme in &lexemes[first + 1..] {
         match lexeme.kind {
             LexemeKind::StatementEnd => return (None, has_data_modifying_cte),
@@ -507,6 +508,17 @@ fn statement_shape<'a>(lexemes: &[Lexeme<'a>]) -> (Option<&'a str>, bool) {
                     first_body_word = false;
                 }
                 if depth == 0 {
+                    if completed_body
+                        && (word.eq_ignore_ascii_case("SEARCH")
+                            || word.eq_ignore_ascii_case("CYCLE"))
+                    {
+                        in_modifier_column_list = true;
+                    } else if completed_body
+                        && in_modifier_column_list
+                        && word.eq_ignore_ascii_case("SET")
+                    {
+                        in_modifier_column_list = false;
+                    }
                     if completed_body
                         && ["SELECT", "VALUES", "TABLE", "INSERT", "UPDATE", "DELETE"]
                             .iter()
@@ -532,11 +544,12 @@ fn statement_shape<'a>(lexemes: &[Lexeme<'a>]) -> (Option<&'a str>, bool) {
                     completed_body = true;
                 }
             }
-            LexemeKind::Comma if depth == 0 && completed_body => {
+            LexemeKind::Comma if depth == 0 && completed_body && !in_modifier_column_list => {
                 saw_as = false;
                 in_body = false;
                 first_body_word = false;
                 completed_body = false;
+                in_modifier_column_list = false;
             }
             _ => {}
         }
@@ -612,17 +625,12 @@ fn unsafe_compound_ddl(analysis: &SqlAnalysis<'_>, backend: &DbType) -> Option<&
                                 .iter()
                                 .skip(2)
                                 .any(|word| word.eq_ignore_ascii_case("EVENT")));
-                    let compound_body = words
-                        .iter()
-                        .position(|word| word.eq_ignore_ascii_case("DO"))
-                        .is_some_and(|do_word| {
-                            words
-                                .get(do_word + 1)
-                                .is_some_and(|word| word.eq_ignore_ascii_case("BEGIN"))
-                                || words
-                                    .get(do_word + 2)
-                                    .is_some_and(|word| word.eq_ignore_ascii_case("BEGIN"))
-                        });
+                    let compound_body = words.iter().enumerate().any(|(index, word)| {
+                        word.eq_ignore_ascii_case("DO")
+                            && words[index + 1..]
+                                .iter()
+                                .any(|word| word.eq_ignore_ascii_case("BEGIN"))
+                    });
                     if event && compound_body {
                         return Some("MySQL compound definition");
                     }

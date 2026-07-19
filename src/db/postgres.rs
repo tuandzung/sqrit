@@ -292,7 +292,16 @@ impl Database for PgAdapter {
     }
 
     async fn execute(&self, query: &str) -> anyhow::Result<QueryResult> {
-        let is_select = crate::sql::query_returns_rows(query, &crate::config::DbType::Postgres);
+        let classification = crate::sql::classify_query(query, &crate::config::DbType::Postgres);
+        if classification
+            .as_ref()
+            .is_ok_and(|query| query.returns_rows && !query.can_paginate)
+        {
+            anyhow::bail!(
+                "cannot safely execute row-producing PostgreSQL data-modifying CTE without loading unbounded results"
+            );
+        }
+        let is_select = classification.is_ok_and(|query| query.returns_rows);
         let mut guard = self.exec_conn.lock().await;
         let conn = guard
             .as_mut()

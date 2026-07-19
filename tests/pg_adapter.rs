@@ -200,7 +200,7 @@ async fn execute_paginated_respects_offset_and_limit() {
 
 #[tokio::test]
 #[ignore]
-async fn data_modifying_cte_remains_top_level_when_pagination_is_requested() {
+async fn data_modifying_cte_is_rejected_before_unbounded_execution() {
     let table = unique_table("data_cte_page");
     let adapter = setup_with_table(&table).await;
     adapter
@@ -215,12 +215,15 @@ async fn data_modifying_cte_remains_top_level_when_pagination_is_requested() {
         "WITH moved AS (DELETE FROM \"{}\" WHERE name = 'move' RETURNING name) SELECT name FROM moved",
         table
     );
-    let result = adapter.execute_paginated(&query, 0, 2).await.unwrap();
-
-    assert_eq!(result.rows.len(), 1);
-    assert_eq!(
-        result.rows[0].get("name"),
-        Some(&Value::Text("move".into()))
+    let error = adapter.execute(&query).await.unwrap_err();
+    assert!(
+        error.to_string().contains("unbounded results"),
+        "unexpected error: {error}"
+    );
+    let error = adapter.execute_paginated(&query, 0, 2).await.unwrap_err();
+    assert!(
+        error.to_string().contains("unbounded results"),
+        "unexpected error: {error}"
     );
     let remaining = adapter
         .execute(&format!(
@@ -229,7 +232,7 @@ async fn data_modifying_cte_remains_top_level_when_pagination_is_requested() {
         ))
         .await
         .unwrap();
-    assert_eq!(remaining.rows[0].get("count"), Some(&Value::Integer(0)));
+    assert_eq!(remaining.rows[0].get("count"), Some(&Value::Integer(1)));
 }
 
 // #8 list_views after CREATE VIEW
