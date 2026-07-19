@@ -632,6 +632,91 @@ fn statement_shape<'a>(lexemes: &[Lexeme<'a>]) -> (Option<&'a str>, bool) {
     (None, has_data_modifying_cte)
 }
 
+fn mysql_event_body_do(lexemes: &[Lexeme<'_>], mut next: usize) -> Option<usize> {
+    #[derive(Clone, Copy)]
+    enum OptionState {
+        Options,
+        AfterOn,
+        Schedule,
+        ScheduleEvery,
+        ScheduleAt,
+    }
+
+    let is_word = |lexeme: Lexeme<'_>, expected: &str| matches!(lexeme.kind, LexemeKind::Word(word) if word.eq_ignore_ascii_case(expected));
+    let is_identifier =
+        |lexeme: Lexeme<'_>| matches!(lexeme.kind, LexemeKind::Word(_) | LexemeKind::Identifier);
+    let is_interval_unit = |word: &str| {
+        [
+            "YEAR",
+            "QUARTER",
+            "MONTH",
+            "WEEK",
+            "DAY",
+            "HOUR",
+            "MINUTE",
+            "SECOND",
+            "YEAR_MONTH",
+            "DAY_HOUR",
+            "DAY_MINUTE",
+            "DAY_SECOND",
+            "HOUR_MINUTE",
+            "HOUR_SECOND",
+            "MINUTE_SECOND",
+        ]
+        .iter()
+        .any(|unit| word.eq_ignore_ascii_case(unit))
+    };
+
+    let mut state = OptionState::Options;
+    while let Some(lexeme) = lexemes.get(next).copied() {
+        match state {
+            OptionState::Options if is_word(lexeme, "RENAME") => {
+                next += 1;
+                if lexemes
+                    .get(next)
+                    .is_some_and(|lexeme| is_word(*lexeme, "TO"))
+                {
+                    next += 1;
+                }
+                if lexemes.get(next).copied().is_some_and(is_identifier) {
+                    next += 1;
+                    while matches!(
+                        lexemes.get(next).map(|lexeme| lexeme.kind),
+                        Some(LexemeKind::Dot)
+                    ) && lexemes.get(next + 1).copied().is_some_and(is_identifier)
+                    {
+                        next += 2;
+                    }
+                }
+                continue;
+            }
+            OptionState::Options if is_word(lexeme, "ON") => state = OptionState::AfterOn,
+            OptionState::Options if is_word(lexeme, "STARTS") || is_word(lexeme, "ENDS") => {
+                state = OptionState::ScheduleAt;
+            }
+            OptionState::Options if is_word(lexeme, "DO") => return Some(next),
+            OptionState::AfterOn if is_word(lexeme, "SCHEDULE") => {
+                state = OptionState::Schedule;
+            }
+            OptionState::AfterOn => state = OptionState::Options,
+            OptionState::Schedule if is_word(lexeme, "EVERY") => {
+                state = OptionState::ScheduleEvery;
+            }
+            OptionState::Schedule if is_word(lexeme, "AT") => {
+                state = OptionState::ScheduleAt;
+            }
+            OptionState::ScheduleEvery if matches!(lexeme.kind, LexemeKind::Word(word) if is_interval_unit(word)) =>
+            {
+                state = OptionState::Options;
+            }
+            OptionState::ScheduleAt if is_word(lexeme, "DO") => return Some(next),
+            _ => {}
+        }
+        next += 1;
+    }
+    None
+}
+
 fn mysql_compound_event_body(lexemes: &[Lexeme<'_>]) -> bool {
     let is_word = |lexeme: Lexeme<'_>, expected: &str| matches!(lexeme.kind, LexemeKind::Word(word) if word.eq_ignore_ascii_case(expected));
     let is_identifier =
@@ -653,20 +738,17 @@ fn mysql_compound_event_body(lexemes: &[Lexeme<'_>]) -> bool {
             {
                 next += 2;
             }
-            lexemes[next..]
-                .iter()
-                .enumerate()
-                .filter(|(_, lexeme)| is_word(**lexeme, "DO"))
-                .any(|(index, _)| {
-                    let body = &lexemes[next + index + 1..];
-                    body.first().is_some_and(|lexeme| is_word(*lexeme, "BEGIN"))
-                        || (body.first().copied().is_some_and(is_identifier)
-                            && matches!(
-                                body.get(1).map(|lexeme| lexeme.kind),
-                                Some(LexemeKind::Colon)
-                            )
-                            && body.get(2).is_some_and(|lexeme| is_word(*lexeme, "BEGIN")))
-                })
+            let Some(body_do) = mysql_event_body_do(lexemes, next) else {
+                return false;
+            };
+            let body = &lexemes[body_do + 1..];
+            body.first().is_some_and(|lexeme| is_word(*lexeme, "BEGIN"))
+                || (body.first().copied().is_some_and(is_identifier)
+                    && matches!(
+                        body.get(1).map(|lexeme| lexeme.kind),
+                        Some(LexemeKind::Colon)
+                    )
+                    && body.get(2).is_some_and(|lexeme| is_word(*lexeme, "BEGIN")))
         })
 }
 
@@ -927,20 +1009,19 @@ fn classify<'a>(sql: &'a str, backend: &DbType) -> Result<SqlAnalysis<'a>, State
                 consume_line_comment(bytes, &mut kinds, i)
             }
             b'#' if matches!(backend, DbType::Mysql) => consume_line_comment(bytes, &mut kinds, i),
-            b'/' if bytes.get(i + 1) == Some(&b'*') => {
-                let kind = if matches!(backend, DbType::Mysql) && bytes.get(i + 2) == Some(&b'!') {
-                    ScanKind::ExecutableComment
-                } else {
-                    ScanKind::Comment
-                };
-                consume_block_comment(
-                    bytes,
-                    &mut kinds,
-                    i,
-                    matches!(backend, DbType::Postgres),
-                    kind,
-                )?
+            b'/' if bytes.get(i + 1) == Some(&b'*')
+                && matches!(backend, DbType::Mysql)
+                && bytes.get(i + 2) == Some(&b'!') =>
+            {
+                consume_mysql_executable_comment(bytes, &mut kinds, i)?
             }
+            b'/' if bytes.get(i + 1) == Some(&b'*') => consume_block_comment(
+                bytes,
+                &mut kinds,
+                i,
+                matches!(backend, DbType::Postgres),
+                ScanKind::Comment,
+            )?,
             b'$' if matches!(backend, DbType::Postgres) => match dollar_delimiter(bytes, i) {
                 Some(delimiter) => consume_dollar(bytes, &mut kinds, i, delimiter)?,
                 None => i + 1,
@@ -1053,6 +1134,20 @@ fn consume_block_comment(
         }
     }
     Err(StatementScanError::Unterminated("block comment"))
+}
+
+fn consume_mysql_executable_comment(
+    bytes: &[u8],
+    kinds: &mut [ScanKind],
+    start: usize,
+) -> Result<usize, StatementScanError> {
+    let end = consume_block_comment(bytes, kinds, start, false, ScanKind::Comment)?;
+    let mut payload = start + 3;
+    while payload < end - 2 && bytes[payload].is_ascii_digit() {
+        payload += 1;
+    }
+    mark(kinds, payload..end - 2, ScanKind::ExecutableComment);
+    Ok(end)
 }
 
 fn dollar_delimiter(bytes: &[u8], start: usize) -> Option<&[u8]> {

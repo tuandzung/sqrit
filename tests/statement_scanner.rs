@@ -165,10 +165,27 @@ fn mysql_labeled_alter_event_compound_definition_fails_closed() {
         "ALTER EVENT do DO body$part: BEGIN DELETE FROM log; INSERT INTO audit VALUES (1); END;",
         "ALTER EVENT cleanup RENAME TO do DO BEGIN DELETE FROM log; INSERT INTO audit VALUES (1); END;",
         "ALTER DEFINER = event@localhost EVENT cleanup DO BEGIN DELETE FROM log; INSERT INTO audit VALUES (1); END;",
+        "ALTER EVENT cleanup ON SCHEDULE EVERY @do + 1 SECOND DO BEGIN DELETE FROM log; INSERT INTO audit VALUES (1); END;",
         "ALTER EVENT cleanup DO /* body */ BEGIN DELETE FROM log; INSERT INTO audit VALUES (1); END;",
         "ALTER EVENT cleanup DO /* label */ body$part /* colon */ : /* block */ BEGIN DELETE FROM log; INSERT INTO audit VALUES (1); END;",
     ] {
         let error = statement_at_cursor(sql, (0, 55), DbType::Mysql).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "cannot safely scan MySQL compound definition",
+            "{sql}"
+        );
+    }
+}
+
+#[test]
+fn mysql_executable_comment_event_openers_fail_closed() {
+    for sql in [
+        "ALTER EVENT cleanup DO /*!50000 BEGIN */ DELETE FROM log; INSERT INTO audit VALUES (1); END;",
+        "ALTER EVENT cleanup DO /*!50000 body$part: BEGIN */ DELETE FROM log; INSERT INTO audit VALUES (1); END;",
+        "ALTER EVENT cleanup DO /* before */ /*!50000 BEGIN */ /* after */ DELETE FROM log; INSERT INTO audit VALUES (1); END;",
+    ] {
+        let error = statement_at_cursor(sql, (0, 65), DbType::Mysql).unwrap_err();
         assert_eq!(
             error.to_string(),
             "cannot safely scan MySQL compound definition",
@@ -185,6 +202,8 @@ fn mysql_noncompound_alter_event_remains_selectable() {
         "ALTER EVENT cleanup DO INSERT INTO begin VALUES (1);",
         "ALTER EVENT cleanup DO UPDATE jobs SET x = do + begin;",
         "ALTER EVENT cleanup DO UPDATE jobs SET x = do / (begin - 1);",
+        "ALTER EVENT cleanup DO UPDATE do begin SET x = 1;",
+        "ALTER EVENT cleanup DO /*!50000 UPDATE jobs SET x = do + begin */;",
     ] {
         assert_eq!(selected(sql, (0, 30), DbType::Mysql).0, sql);
     }
