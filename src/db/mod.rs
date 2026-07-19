@@ -114,12 +114,18 @@ mod tests {
 
     #[test]
     fn postgres_search_and_cycle_clauses_precede_the_main_statement() {
-        let recursive = "WITH RECURSIVE t(a, b) AS (VALUES (1, 2) UNION ALL SELECT a + 1, b + 1 FROM t WHERE a < 3)";
+        let recursive = "WITH RECURSIVE t(a, b, set) AS (VALUES (1, 2, 3) UNION ALL SELECT a + 1, b + 1, set + 1 FROM t WHERE a < 3)";
         for suffix in [
             "SEARCH DEPTH FIRST BY a, b SET ordercol SELECT a FROM t",
+            "SEARCH DEPTH FIRST BY set, b SET ordercol SELECT a FROM t",
+            "SEARCH DEPTH FIRST BY a, set SET ordercol SELECT a FROM t",
             "CYCLE a, b SET is_cycle USING path SELECT a FROM t",
+            "CYCLE set, b SET is_cycle USING path SELECT a FROM t",
+            "CYCLE a, set SET is_cycle USING path SELECT a FROM t",
+            "SEARCH DEPTH FIRST BY \"set\", b SET ordercol SELECT a FROM t",
             "SEARCH BREADTH FIRST BY a, b SET ordercol CYCLE a, b SET is_cycle USING path VALUES (1)",
             "SEARCH DEPTH FIRST BY a, b SET ordercol, q AS (SELECT a FROM t) TABLE q",
+            "SEARCH DEPTH FIRST BY set, b SET ordercol CYCLE a, set SET is_cycle USING path, q AS (SELECT a FROM t) TABLE q",
         ] {
             let sql = format!("{recursive} {suffix}");
             assert!(query_returns_rows(&sql, &DbType::Postgres), "{sql}");
@@ -129,6 +135,7 @@ mod tests {
             "SEARCH DEPTH FIRST BY a, b SET ordercol INSERT INTO sink SELECT a FROM t",
             "CYCLE a, b SET is_cycle USING path UPDATE sink SET n = 1",
             "SEARCH DEPTH FIRST BY a, b SET ordercol CYCLE a, b SET is_cycle USING path DELETE FROM sink",
+            "SEARCH DEPTH FIRST BY set, b SET ordercol CYCLE a, set SET is_cycle USING path DELETE FROM sink",
         ] {
             let sql = format!("{recursive} {suffix}");
             assert!(!query_returns_rows(&sql, &DbType::Postgres), "{sql}");

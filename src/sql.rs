@@ -371,6 +371,7 @@ impl std::error::Error for StatementScanError {}
 enum ScanKind {
     Sql,
     Quoted,
+    QuotedIdentifier,
     Comment,
     ExecutableComment,
 }
@@ -390,9 +391,11 @@ struct SqlAnalysis<'a> {
 #[derive(Debug, Clone, Copy)]
 enum LexemeKind<'a> {
     Word(&'a str),
+    Identifier,
     OpenParen,
     CloseParen,
     Comma,
+    Colon,
     StatementEnd,
 }
 
@@ -490,13 +493,22 @@ fn statement_shape<'a>(lexemes: &[Lexeme<'a>]) -> (Option<&'a str>, bool) {
         return (Some(first_word), false);
     }
 
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum ModifierState {
+        None,
+        SearchAwaitingBy,
+        ExpectingColumn,
+        AfterColumn,
+        Tail,
+    }
+
     let mut depth = 0usize;
     let mut saw_as = false;
     let mut in_body = false;
     let mut first_body_word = false;
     let mut has_data_modifying_cte = false;
     let mut completed_body = false;
-    let mut in_modifier_column_list = false;
+    let mut modifier = ModifierState::None;
     for lexeme in &lexemes[first + 1..] {
         match lexeme.kind {
             LexemeKind::StatementEnd => return (None, has_data_modifying_cte),
@@ -508,28 +520,44 @@ fn statement_shape<'a>(lexemes: &[Lexeme<'a>]) -> (Option<&'a str>, bool) {
                     first_body_word = false;
                 }
                 if depth == 0 {
-                    if completed_body
-                        && (word.eq_ignore_ascii_case("SEARCH")
-                            || word.eq_ignore_ascii_case("CYCLE"))
-                    {
-                        in_modifier_column_list = true;
-                    } else if completed_body
-                        && in_modifier_column_list
-                        && word.eq_ignore_ascii_case("SET")
-                    {
-                        in_modifier_column_list = false;
-                    }
-                    if completed_body
-                        && ["SELECT", "VALUES", "TABLE", "INSERT", "UPDATE", "DELETE"]
-                            .iter()
-                            .any(|keyword| word.eq_ignore_ascii_case(keyword))
-                    {
-                        return (Some(word), has_data_modifying_cte);
+                    if completed_body {
+                        match modifier {
+                            ModifierState::None if word.eq_ignore_ascii_case("SEARCH") => {
+                                modifier = ModifierState::SearchAwaitingBy;
+                            }
+                            ModifierState::None | ModifierState::Tail
+                                if word.eq_ignore_ascii_case("CYCLE") =>
+                            {
+                                modifier = ModifierState::ExpectingColumn;
+                            }
+                            ModifierState::SearchAwaitingBy if word.eq_ignore_ascii_case("BY") => {
+                                modifier = ModifierState::ExpectingColumn;
+                            }
+                            ModifierState::ExpectingColumn => {
+                                modifier = ModifierState::AfterColumn;
+                            }
+                            ModifierState::AfterColumn if word.eq_ignore_ascii_case("SET") => {
+                                modifier = ModifierState::Tail;
+                            }
+                            ModifierState::None | ModifierState::Tail
+                                if ["SELECT", "VALUES", "TABLE", "INSERT", "UPDATE", "DELETE"]
+                                    .iter()
+                                    .any(|keyword| word.eq_ignore_ascii_case(keyword)) =>
+                            {
+                                return (Some(word), has_data_modifying_cte);
+                            }
+                            _ => {}
+                        }
                     }
                     if word.eq_ignore_ascii_case("AS") {
                         saw_as = true;
                     }
                 }
+            }
+            LexemeKind::Identifier
+                if depth == 0 && completed_body && modifier == ModifierState::ExpectingColumn =>
+            {
+                modifier = ModifierState::AfterColumn;
             }
             LexemeKind::OpenParen => {
                 if depth == 0 && saw_as {
@@ -544,17 +572,34 @@ fn statement_shape<'a>(lexemes: &[Lexeme<'a>]) -> (Option<&'a str>, bool) {
                     completed_body = true;
                 }
             }
-            LexemeKind::Comma if depth == 0 && completed_body && !in_modifier_column_list => {
-                saw_as = false;
-                in_body = false;
-                first_body_word = false;
-                completed_body = false;
-                in_modifier_column_list = false;
-            }
+            LexemeKind::Comma if depth == 0 && completed_body => match modifier {
+                ModifierState::AfterColumn => modifier = ModifierState::ExpectingColumn,
+                ModifierState::None | ModifierState::Tail => {
+                    saw_as = false;
+                    in_body = false;
+                    first_body_word = false;
+                    completed_body = false;
+                    modifier = ModifierState::None;
+                }
+                _ => {}
+            },
             _ => {}
         }
     }
     (None, has_data_modifying_cte)
+}
+
+fn mysql_compound_event_body(lexemes: &[Lexeme<'_>]) -> bool {
+    let is_word = |lexeme: Lexeme<'_>, expected: &str| matches!(lexeme.kind, LexemeKind::Word(word) if word.eq_ignore_ascii_case(expected));
+    lexemes
+        .windows(2)
+        .any(|pair| is_word(pair[0], "DO") && is_word(pair[1], "BEGIN"))
+        || lexemes.windows(4).any(|part| {
+            is_word(part[0], "DO")
+                && matches!(part[1].kind, LexemeKind::Word(_) | LexemeKind::Identifier)
+                && matches!(part[2].kind, LexemeKind::Colon)
+                && is_word(part[3], "BEGIN")
+        })
 }
 
 fn unsafe_compound_ddl(analysis: &SqlAnalysis<'_>, backend: &DbType) -> Option<&'static str> {
@@ -565,10 +610,14 @@ fn unsafe_compound_ddl(analysis: &SqlAnalysis<'_>, backend: &DbType) -> Option<&
     };
 
     for range in candidate_ranges(analysis.text, &analysis.kinds) {
-        let words = analysis
+        let candidate_lexemes = analysis
             .lexemes
             .iter()
+            .copied()
             .filter(|lexeme| range.contains(&lexeme.offset))
+            .collect::<Vec<_>>();
+        let words = candidate_lexemes
+            .iter()
             .filter_map(|lexeme| match lexeme.kind {
                 LexemeKind::Word(word) => Some(word),
                 _ => None,
@@ -625,13 +674,7 @@ fn unsafe_compound_ddl(analysis: &SqlAnalysis<'_>, backend: &DbType) -> Option<&
                                 .iter()
                                 .skip(2)
                                 .any(|word| word.eq_ignore_ascii_case("EVENT")));
-                    let compound_body = words.iter().enumerate().any(|(index, word)| {
-                        word.eq_ignore_ascii_case("DO")
-                            && words[index + 1..]
-                                .iter()
-                                .any(|word| word.eq_ignore_ascii_case("BEGIN"))
-                    });
-                    if event && compound_body {
+                    if event && mysql_compound_event_body(&candidate_lexemes) {
                         return Some("MySQL compound definition");
                     }
                     continue;
@@ -699,18 +742,45 @@ fn lexemes<'a>(sql: &'a str, kinds: &[ScanKind]) -> Vec<Lexeme<'a>> {
     let mut lexemes = Vec::new();
     let mut i = 0;
     while i < bytes.len() {
-        if kinds[i].contributes_words() && (bytes[i].is_ascii_alphabetic() || bytes[i] == b'_') {
+        if kinds[i] == ScanKind::QuotedIdentifier {
             let start = i;
             i += 1;
-            while i < bytes.len()
-                && kinds[i].contributes_words()
-                && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_')
-            {
+            while i < bytes.len() && kinds[i] == ScanKind::QuotedIdentifier {
                 i += 1;
             }
             lexemes.push(Lexeme {
                 offset: start,
-                kind: LexemeKind::Word(&sql[start..i]),
+                kind: LexemeKind::Identifier,
+            });
+            continue;
+        }
+        if kinds[i].contributes_words()
+            && (bytes[i].is_ascii_alphabetic()
+                || matches!(bytes[i], b'_' | b'$')
+                || bytes[i] >= 0x80)
+        {
+            let start = i;
+            i += 1;
+            while i < bytes.len()
+                && kinds[i].contributes_words()
+                && (bytes[i].is_ascii_alphanumeric()
+                    || matches!(bytes[i], b'_' | b'$')
+                    || bytes[i] >= 0x80)
+            {
+                i += 1;
+            }
+            let word = bytes[start].is_ascii_alphabetic() || bytes[start] == b'_';
+            let word = word
+                && bytes[start..i]
+                    .iter()
+                    .all(|byte| byte.is_ascii_alphanumeric() || *byte == b'_');
+            lexemes.push(Lexeme {
+                offset: start,
+                kind: if word {
+                    LexemeKind::Word(&sql[start..i])
+                } else {
+                    LexemeKind::Identifier
+                },
             });
             continue;
         }
@@ -719,6 +789,7 @@ fn lexemes<'a>(sql: &'a str, kinds: &[ScanKind]) -> Vec<Lexeme<'a>> {
                 b'(' => Some(LexemeKind::OpenParen),
                 b')' => Some(LexemeKind::CloseParen),
                 b',' => Some(LexemeKind::Comma),
+                b':' => Some(LexemeKind::Colon),
                 b';' if kinds[i] == ScanKind::Sql => Some(LexemeKind::StatementEnd),
                 _ => None,
             };
@@ -743,6 +814,7 @@ fn classify<'a>(sql: &'a str, backend: &DbType) -> Result<SqlAnalysis<'a>, State
                 &mut kinds,
                 i,
                 b'\'',
+                ScanKind::Quoted,
                 "single-quoted string",
                 quote_uses_backslash(bytes, i, b'\'', backend),
             )?,
@@ -751,6 +823,7 @@ fn classify<'a>(sql: &'a str, backend: &DbType) -> Result<SqlAnalysis<'a>, State
                 &mut kinds,
                 i,
                 b'"',
+                ScanKind::QuotedIdentifier,
                 "double-quoted identifier",
                 quote_uses_backslash(bytes, i, b'"', backend),
             )?,
@@ -759,6 +832,7 @@ fn classify<'a>(sql: &'a str, backend: &DbType) -> Result<SqlAnalysis<'a>, State
                 &mut kinds,
                 i,
                 b'`',
+                ScanKind::QuotedIdentifier,
                 "backtick identifier",
                 quote_uses_backslash(bytes, i, b'`', backend),
             )?,
@@ -825,7 +899,7 @@ fn consume_bracket(
         return Err(StatementScanError::Unterminated("bracketed identifier"));
     };
     let end = start + close + 2;
-    mark(kinds, start..end, ScanKind::Quoted);
+    mark(kinds, start..end, ScanKind::QuotedIdentifier);
     Ok(end)
 }
 
@@ -838,6 +912,7 @@ fn consume_quote(
     kinds: &mut [ScanKind],
     start: usize,
     quote: u8,
+    kind: ScanKind,
     label: &'static str,
     backslash_escapes: bool,
 ) -> Result<usize, StatementScanError> {
@@ -853,7 +928,7 @@ fn consume_quote(
                 continue;
             }
             let end = i + 1;
-            mark(kinds, start..end, ScanKind::Quoted);
+            mark(kinds, start..end, kind);
             return Ok(end);
         }
         i += 1;
