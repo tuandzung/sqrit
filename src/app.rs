@@ -1,6 +1,7 @@
 use std::io;
 use std::time::Instant;
 
+use crossterm::cursor::SetCursorStyle;
 use crossterm::event::{self, DisableBracketedPaste, EnableBracketedPaste, Event, KeyEventKind};
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
@@ -27,34 +28,47 @@ use crate::mode::editor::normal::NormalState;
 use crate::mode::Mode;
 use crate::picker::PickerState;
 
-/// Install a panic hook that restores the terminal — disables bracketed
-/// paste, leaves the alternate screen, and turns raw mode back off — so a
-/// panic doesn't leave the user's shell unusable. Idempotent: only
-/// installs the hook once even if `run()` is called multiple times.
+const DEFAULT_CURSOR_STYLE: SetCursorStyle = SetCursorStyle::DefaultUserShape;
+
+fn restore_terminal() {
+    let _ = disable_raw_mode();
+    let _ = crossterm::execute!(
+        io::stdout(),
+        DisableBracketedPaste,
+        LeaveAlternateScreen,
+        DEFAULT_CURSOR_STYLE
+    );
+}
+
+/// Install a panic hook that restores the terminal so a panic doesn't leave
+/// the user's shell unusable. Idempotent across repeated `run()` calls.
 fn install_panic_hook_for_terminal_restore() {
     use std::sync::Once;
     static INIT: Once = Once::new();
     INIT.call_once(|| {
         let prev = std::panic::take_hook();
         std::panic::set_hook(Box::new(move |info| {
-            let _ = disable_raw_mode();
-            let _ = crossterm::execute!(io::stdout(), DisableBracketedPaste, LeaveAlternateScreen);
+            restore_terminal();
             prev(info);
         }));
     });
 }
 
-/// RAII guard that restores the terminal on drop. Pairs with the
-/// `EnableBracketedPaste` + `enable_raw_mode` setup in `App::run` so a
-/// `?`-propagated error mid-loop (e.g. an `event::read()` or `draw()`
-/// failure) still leaves the shell usable. The panic hook covers
-/// unwinds; this guard covers normal early returns.
+/// Restores raw mode, alternate screen, bracketed paste, and cursor style on
+/// normal early returns. The panic hook covers unwinds.
 struct TerminalRestoreGuard;
 
 impl Drop for TerminalRestoreGuard {
     fn drop(&mut self) {
-        let _ = disable_raw_mode();
-        let _ = crossterm::execute!(io::stdout(), DisableBracketedPaste, LeaveAlternateScreen);
+        restore_terminal();
+    }
+}
+
+fn cursor_style(mode: Mode) -> SetCursorStyle {
+    match mode {
+        Mode::QueryNormal => SetCursorStyle::SteadyBlock,
+        Mode::QueryInsert => SetCursorStyle::BlinkingBlock,
+        _ => DEFAULT_CURSOR_STYLE,
     }
 }
 
@@ -529,8 +543,13 @@ impl App {
         let backend = CrosstermBackend::new(io::stdout());
         let mut terminal = Terminal::new(backend)?;
         terminal.clear()?;
+        let mut styled_mode = None;
 
         loop {
+            if styled_mode != Some(self.mode) {
+                crossterm::execute!(terminal.backend_mut(), cursor_style(self.mode))?;
+                styled_mode = Some(self.mode);
+            }
             terminal.draw(|f| self.render(f))?;
 
             if event::poll(std::time::Duration::from_millis(100))? {
@@ -998,7 +1017,7 @@ impl App {
         frame.render_widget(Paragraph::new(lines), inner);
     }
 
-    /// Computes scroll offset and absolute terminal position for the INSERT mode cursor.
+    /// Computes scroll offset and absolute terminal position for the query editor cursor.
     /// Returns `(scroll_offset, term_x, term_y)`.
     /// Pure function — no side effects, fully testable.
     pub fn insert_cursor_position(
@@ -1045,8 +1064,11 @@ impl App {
         let query_paragraph = Paragraph::new(query_text).scroll((scroll_offset, 0));
         frame.render_widget(query_paragraph, inner);
 
-        // Show terminal cursor in INSERT mode (V8).
-        if self.mode == Mode::QueryInsert {
+        // Query modes show the editor cursor; other panes and overlays hide it.
+        if matches!(self.mode, Mode::QueryNormal | Mode::QueryInsert)
+            && inner.width > 0
+            && inner.height > 0
+        {
             frame.set_cursor_position(ratatui::layout::Position {
                 x: term_x,
                 y: term_y,
@@ -1368,5 +1390,24 @@ impl App {
         }
 
         frame.render_stateful_widget(list, area, &mut state);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::Command;
+
+    fn cursor_style_ansi(mode: Mode) -> String {
+        let mut ansi = String::new();
+        cursor_style(mode).write_ansi(&mut ansi).unwrap();
+        ansi
+    }
+
+    #[test]
+    fn cursor_style_matches_mode() {
+        assert_eq!(cursor_style_ansi(Mode::QueryNormal), "\x1b[2 q");
+        assert_eq!(cursor_style_ansi(Mode::QueryInsert), "\x1b[1 q");
+        assert_eq!(cursor_style_ansi(Mode::Results), "\x1b[0 q");
     }
 }

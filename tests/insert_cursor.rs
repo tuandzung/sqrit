@@ -1,5 +1,14 @@
-use ratatui::layout::Rect;
-use sqrit::app::App;
+mod common;
+
+use ratatui::{
+    backend::TestBackend,
+    layout::{Position, Rect},
+    Terminal,
+};
+use sqrit::{
+    app::{App, FocusedPane},
+    mode::Mode,
+};
 
 fn inner(x: u16, y: u16, w: u16, h: u16) -> Rect {
     Rect {
@@ -72,4 +81,37 @@ fn zero_height_inner_no_scroll() {
         "ty {ty} underflows inner rect top {}",
         inner_rect.y
     );
+}
+
+fn rendered_cursor(mode: Mode, width: u16, height: u16, initial: Position) -> Position {
+    let mut app = common::test_app();
+    app.mode = mode;
+    app.maximized = Some(FocusedPane::Query);
+    app.editor.insert_str("one\ntwo");
+
+    let backend = TestBackend::new(width, height);
+    let mut terminal = Terminal::new(backend).unwrap();
+    terminal.set_cursor_position(initial).unwrap();
+    terminal.draw(|frame| app.render(frame)).unwrap();
+    terminal.get_cursor_position().unwrap()
+}
+
+#[test]
+fn query_modes_render_cursor_at_editor_position() {
+    let expected = Position::new(4, 2);
+    for mode in [Mode::QueryNormal, Mode::QueryInsert] {
+        assert_eq!(rendered_cursor(mode, 40, 12, Position::new(9, 9)), expected);
+    }
+}
+
+#[test]
+fn non_query_modes_do_not_render_editor_cursor() {
+    let initial = Position::new(9, 9);
+    assert_eq!(rendered_cursor(Mode::Results, 40, 12, initial), initial);
+}
+
+#[test]
+fn zero_sized_query_inner_does_not_render_cursor() {
+    let initial = Position::new(1, 1);
+    assert_eq!(rendered_cursor(Mode::QueryNormal, 2, 2, initial), initial);
 }
