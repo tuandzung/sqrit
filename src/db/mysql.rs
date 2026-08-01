@@ -167,7 +167,12 @@ impl MySqlAdapter {
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("not connected"))?;
         let row = sqlx::query(sql).fetch_one(pool).await?;
-        Ok(row.try_get(definition_column)?)
+        let definition: Option<String> = row.try_get(definition_column)?;
+        definition.ok_or_else(|| {
+            anyhow::anyhow!(
+                "MySQL returned NULL for the object definition; routine definitions require the current user to be the DEFINER or have SHOW_ROUTINE"
+            )
+        })
     }
 }
 
