@@ -179,12 +179,13 @@ impl PgAdapter {
             .pool
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("not connected"))?;
-        let rows = sqlx::query_as::<_, (String, Option<String>)>(
-            "SELECT p.proname, pg_catalog.format_type(p.prorettype, NULL)
+        let rows = sqlx::query_as::<_, (String, Option<String>, String)>(
+            "SELECT p.proname, pg_catalog.format_type(p.prorettype, NULL),
+                    pg_get_function_identity_arguments(p.oid)
              FROM pg_proc p
              JOIN pg_namespace n ON n.oid = p.pronamespace
              WHERE n.nspname = $1 AND p.prokind = $2::\"char\"
-             ORDER BY p.proname",
+             ORDER BY p.proname, pg_get_function_identity_arguments(p.oid)",
         )
         .bind(schema)
         .bind(prokind.to_string())
@@ -192,7 +193,11 @@ impl PgAdapter {
         .await?;
         Ok(rows
             .into_iter()
-            .map(|(name, return_type)| RoutineObject { name, return_type })
+            .map(|(name, return_type, identity_arguments)| RoutineObject {
+                name,
+                return_type,
+                identity_arguments: Some(identity_arguments),
+            })
             .collect())
     }
 

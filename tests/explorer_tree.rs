@@ -4,8 +4,8 @@ use ratatui::backend::TestBackend;
 use ratatui::Terminal;
 use sqrit::app::{App, FocusedPane};
 use sqrit::db::types::{
-    ColumnInfo, IndexObject, Namespace, ObjectKind, SchemaInfo, TableObject, TriggerObject,
-    ViewObject,
+    ColumnInfo, IndexObject, Namespace, ObjectKind, RoutineObject, SchemaInfo, TableObject,
+    TriggerObject, ViewObject,
 };
 use sqrit::explorer::{ExplorerState, NodeKey, TreeItem};
 use sqrit::mode::Mode;
@@ -200,9 +200,9 @@ fn leaf_objects_have_no_toggle_key() {
             matches!(
                 item,
                 TreeItem::Object {
-                    kind: ObjectKind::Index,
+                    object,
                     ..
-                }
+                } if object.kind == ObjectKind::Index
             )
         })
         .unwrap();
@@ -267,9 +267,9 @@ fn enter_on_leaf_object_does_nothing() {
             matches!(
                 item,
                 TreeItem::Object {
-                    kind: ObjectKind::Index,
+                    object,
                     ..
-                }
+                } if object.kind == ObjectKind::Index
             )
         })
         .unwrap();
@@ -434,4 +434,52 @@ fn adjust_scroll_saturates_on_overflow() {
     state.selected = 5;
     state.adjust_scroll();
     assert!(state.scroll_offset <= 21);
+}
+
+#[test]
+fn leaf_objects_keep_relation_and_routine_identity() {
+    let mut namespace = Namespace::empty("public");
+    namespace.indexes.push(IndexObject {
+        name: "users_email_idx".into(),
+        table: "users".into(),
+        unique: true,
+    });
+    namespace.triggers.push(TriggerObject {
+        name: "users_audit".into(),
+        table: "users".into(),
+        event: "UPDATE".into(),
+    });
+    namespace.functions.push(RoutineObject {
+        name: "lookup_user".into(),
+        return_type: Some("text".into()),
+        identity_arguments: Some("integer".into()),
+    });
+    let mut state = ExplorerState::new();
+    state.set_schema(SchemaInfo {
+        namespaces: vec![namespace],
+    });
+    for kind in [ObjectKind::Index, ObjectKind::Trigger, ObjectKind::Function] {
+        state.toggle_key(NodeKey::Group {
+            ns: "public".into(),
+            kind,
+        });
+    }
+
+    let objects = state
+        .items()
+        .into_iter()
+        .filter_map(|item| item.object_ref().cloned())
+        .collect::<Vec<_>>();
+    assert!(objects.iter().any(|object| {
+        object.kind == ObjectKind::Index && object.relation.as_deref() == Some("users")
+    }));
+    assert!(objects.iter().any(|object| {
+        object.kind == ObjectKind::Trigger && object.relation.as_deref() == Some("users")
+    }));
+    let routine = objects
+        .iter()
+        .find(|object| object.kind == ObjectKind::Function)
+        .unwrap();
+    assert_eq!(routine.identity_arguments.as_deref(), Some("integer"));
+    assert_eq!(routine.label(), "lookup_user(integer)");
 }

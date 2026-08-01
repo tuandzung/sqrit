@@ -152,7 +152,11 @@ impl MySqlAdapter {
         .await?;
         Ok(rows
             .into_iter()
-            .map(|(name, return_type)| RoutineObject { name, return_type })
+            .map(|(name, return_type)| RoutineObject {
+                name,
+                return_type,
+                identity_arguments: None,
+            })
             .collect())
     }
 }

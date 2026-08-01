@@ -52,7 +52,9 @@ pub fn handle_key(key: KeyEvent, app: &mut App) {
             let items = app.explorer_state.items();
             if let Some(item) = items.get(app.explorer_state.selected) {
                 let (namespace, kind, name) = match item {
-                    TreeItem::Object { ns, kind, name, .. } => (ns, *kind, name),
+                    TreeItem::Object { object, .. } => {
+                        (&object.namespace, object.kind, &object.name)
+                    }
                     TreeItem::Column {
                         ns, kind, parent, ..
                     } => (ns, *kind, parent),

@@ -985,13 +985,8 @@ impl App {
                         kind.group_label(),
                         count
                     ),
-                    crate::explorer::TreeItem::Object {
-                        kind,
-                        name,
-                        expanded,
-                        ..
-                    } => {
-                        let bullet = if kind.supports_select_star() {
+                    crate::explorer::TreeItem::Object { object, expanded } => {
+                        let bullet = if object.kind.supports_select_star() {
                             if *expanded {
                                 "▾"
                             } else {
@@ -1000,7 +995,7 @@ impl App {
                         } else {
                             "•"
                         };
-                        format!("    {bullet} {name}")
+                        format!("    {bullet} {}", object.label())
                     }
                     crate::explorer::TreeItem::Column {
                         name, data_type, ..

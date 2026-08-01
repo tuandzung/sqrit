@@ -110,3 +110,29 @@ async fn pg_system_schemas_are_filtered() {
         .iter()
         .all(|name| !name.starts_with("pg_temp_") && !name.starts_with("pg_toast_temp_")));
 }
+
+#[tokio::test]
+#[ignore]
+async fn pg_schema_info_distinguishes_overloaded_routines() {
+    let adapter = fresh_adapter().await;
+    seed(&adapter).await;
+    for sql in [
+        "CREATE OR REPLACE FUNCTION sqrit_t12.overloaded(integer) RETURNS integer LANGUAGE sql AS 'SELECT $1'",
+        "CREATE OR REPLACE FUNCTION sqrit_t12.overloaded(text) RETURNS text LANGUAGE sql AS 'SELECT $1'",
+    ] {
+        adapter.execute(sql).await.unwrap();
+    }
+    let schema = adapter.schema_info().await.unwrap();
+    let namespace = schema
+        .namespaces
+        .iter()
+        .find(|namespace| namespace.name == "sqrit_t12")
+        .unwrap();
+    let identities = namespace
+        .functions
+        .iter()
+        .filter(|routine| routine.name == "overloaded")
+        .map(|routine| routine.identity_arguments.as_deref().unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(identities, vec!["integer", "text"]);
+}

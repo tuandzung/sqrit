@@ -54,9 +54,7 @@ fn select_object(app: &mut App, kind: ObjectKind) {
         .explorer_state
         .items()
         .iter()
-        .position(
-            |item| matches!(item, TreeItem::Object { kind: item_kind, .. } if *item_kind == kind),
-        )
+        .position(|item| matches!(item, TreeItem::Object { object, .. } if object.kind == kind))
         .unwrap();
 }
 

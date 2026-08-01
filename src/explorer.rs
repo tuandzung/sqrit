@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::db::types::{ColumnInfo, ObjectKind, SchemaInfo};
+use crate::db::types::{ColumnInfo, ObjectKind, ObjectRef, SchemaInfo};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum NodeKey {
@@ -29,9 +29,7 @@ pub enum TreeItem {
         count: usize,
     },
     Object {
-        ns: String,
-        kind: ObjectKind,
-        name: String,
+        object: ObjectRef,
         expanded: bool,
     },
     Column {
@@ -51,14 +49,21 @@ impl TreeItem {
                 ns: ns.clone(),
                 kind: *kind,
             }),
-            Self::Object { ns, kind, name, .. } if kind.supports_select_star() => {
+            Self::Object { object, .. } if object.kind.supports_select_star() => {
                 Some(NodeKey::Object {
-                    ns: ns.clone(),
-                    kind: *kind,
-                    name: name.clone(),
+                    ns: object.namespace.clone(),
+                    kind: object.kind,
+                    name: object.name.clone(),
                 })
             }
             Self::Object { .. } | Self::Column { .. } => None,
+        }
+    }
+
+    pub fn object_ref(&self) -> Option<&ObjectRef> {
+        match self {
+            Self::Object { object, .. } => Some(object),
+            _ => None,
         }
     }
 }
@@ -192,40 +197,61 @@ impl ExplorerState {
                 &mut items,
                 &namespace.name,
                 ObjectKind::Index,
-                namespace.indexes.iter().map(|object| object.name.as_str()),
+                namespace.indexes.iter().map(|item| ObjectRef {
+                    namespace: namespace.name.clone(),
+                    kind: ObjectKind::Index,
+                    name: item.name.clone(),
+                    relation: Some(item.table.clone()),
+                    identity_arguments: None,
+                }),
             );
             self.push_leaf_group(
                 &mut items,
                 &namespace.name,
                 ObjectKind::Trigger,
-                namespace.triggers.iter().map(|object| object.name.as_str()),
+                namespace.triggers.iter().map(|item| ObjectRef {
+                    namespace: namespace.name.clone(),
+                    kind: ObjectKind::Trigger,
+                    name: item.name.clone(),
+                    relation: Some(item.table.clone()),
+                    identity_arguments: None,
+                }),
             );
             self.push_leaf_group(
                 &mut items,
                 &namespace.name,
                 ObjectKind::Function,
-                namespace
-                    .functions
-                    .iter()
-                    .map(|object| object.name.as_str()),
+                namespace.functions.iter().map(|item| ObjectRef {
+                    namespace: namespace.name.clone(),
+                    kind: ObjectKind::Function,
+                    name: item.name.clone(),
+                    relation: None,
+                    identity_arguments: item.identity_arguments.clone(),
+                }),
             );
             self.push_leaf_group(
                 &mut items,
                 &namespace.name,
                 ObjectKind::Procedure,
-                namespace
-                    .procedures
-                    .iter()
-                    .map(|object| object.name.as_str()),
+                namespace.procedures.iter().map(|item| ObjectRef {
+                    namespace: namespace.name.clone(),
+                    kind: ObjectKind::Procedure,
+                    name: item.name.clone(),
+                    relation: None,
+                    identity_arguments: item.identity_arguments.clone(),
+                }),
             );
             self.push_leaf_group(
                 &mut items,
                 &namespace.name,
                 ObjectKind::Sequence,
-                namespace
-                    .sequences
-                    .iter()
-                    .map(|object| object.name.as_str()),
+                namespace.sequences.iter().map(|item| ObjectRef {
+                    namespace: namespace.name.clone(),
+                    kind: ObjectKind::Sequence,
+                    name: item.name.clone(),
+                    relation: None,
+                    identity_arguments: None,
+                }),
             );
         }
         items
@@ -265,9 +291,13 @@ impl ExplorerState {
             };
             let object_expanded = self.expanded.contains(&object_key);
             items.push(TreeItem::Object {
-                ns: namespace.to_string(),
-                kind,
-                name: name.to_string(),
+                object: ObjectRef {
+                    namespace: namespace.to_string(),
+                    kind,
+                    name: name.to_string(),
+                    relation: None,
+                    identity_arguments: None,
+                },
                 expanded: object_expanded,
             });
             if object_expanded {
@@ -282,15 +312,15 @@ impl ExplorerState {
         }
     }
 
-    fn push_leaf_group<'a>(
+    fn push_leaf_group(
         &self,
         items: &mut Vec<TreeItem>,
         namespace: &str,
         kind: ObjectKind,
-        names: impl IntoIterator<Item = &'a str>,
+        objects: impl IntoIterator<Item = ObjectRef>,
     ) {
-        let names = names.into_iter().collect::<Vec<_>>();
-        if names.is_empty() {
+        let objects = objects.into_iter().collect::<Vec<_>>();
+        if objects.is_empty() {
             return;
         }
         let group_key = NodeKey::Group {
@@ -302,13 +332,11 @@ impl ExplorerState {
             ns: namespace.to_string(),
             kind,
             expanded: group_expanded,
-            count: names.len(),
+            count: objects.len(),
         });
         if group_expanded {
-            items.extend(names.into_iter().map(|name| TreeItem::Object {
-                ns: namespace.to_string(),
-                kind,
-                name: name.to_string(),
+            items.extend(objects.into_iter().map(|object| TreeItem::Object {
+                object,
                 expanded: false,
             }));
         }
