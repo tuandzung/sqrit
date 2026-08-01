@@ -90,6 +90,10 @@ pub enum AsyncResult {
     Cancelled {
         in_tx: bool,
     },
+    DefinitionLoaded {
+        request_id: u64,
+        result: Result<Option<String>, String>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -141,6 +145,8 @@ pub struct App {
     pub theme_picker: Option<crate::mode::theme_picker::ThemePickerState>,
     pub help: Option<crate::mode::help::HelpState>,
     pub cell_viewer: Option<crate::mode::cell_viewer::CellViewerState>,
+    pub definition_viewer: Option<crate::mode::definition_viewer::DefinitionViewerState>,
+    pub definition_request_id: u64,
     pub history_picker: Option<crate::mode::history_picker::HistoryPickerState>,
     pub clipboard_writer: crate::clipboard::ClipboardWriter,
     pub app_config: crate::config::AppConfig,
@@ -202,6 +208,8 @@ impl App {
             theme_picker: None,
             help: None,
             cell_viewer: None,
+            definition_viewer: None,
+            definition_request_id: 0,
             history_picker: None,
             clipboard_writer: crate::clipboard::ClipboardWriter::new(),
             app_config,
@@ -249,6 +257,28 @@ impl App {
                         "query cancelled".to_string()
                     };
                     self.query_status = QueryStatus::Idle;
+                }
+                AsyncResult::DefinitionLoaded { request_id, result } => {
+                    if request_id != self.definition_request_id
+                        || self.mode != Mode::DefinitionViewer
+                    {
+                        continue;
+                    }
+                    let Some(state) = self.definition_viewer.as_mut() else {
+                        continue;
+                    };
+                    state.scroll = 0;
+                    state.content = match result {
+                        Ok(Some(definition)) => {
+                            crate::mode::definition_viewer::DefinitionContent::Ready(definition)
+                        }
+                        Ok(None) => crate::mode::definition_viewer::DefinitionContent::Error(
+                            "definition unavailable".to_string(),
+                        ),
+                        Err(error) => {
+                            crate::mode::definition_viewer::DefinitionContent::Error(error)
+                        }
+                    };
                 }
             }
         }

@@ -20,6 +20,10 @@ const BINDINGS: &[KeyBinding] = &[
         action: "SELECT * FROM <ns>.<obj> LIMIT 100 (tables/views/matviews only)",
     },
     KeyBinding {
+        key: "d",
+        action: "Open object definition",
+    },
+    KeyBinding {
         key: "q / r / e",
         action: "Focus Query / Results / Explorer pane",
     },
@@ -46,6 +50,20 @@ pub fn handle_key(key: KeyEvent, app: &mut App) {
         KeyCode::Char('e') => app.switch_pane(Mode::Explorer, crate::app::FocusedPane::Explorer),
         KeyCode::Char('j') | KeyCode::Down => app.explorer_state.move_down(),
         KeyCode::Char('k') | KeyCode::Up => app.explorer_state.move_up(),
+        KeyCode::Char('d') => {
+            let object = app
+                .explorer_state
+                .items()
+                .get(app.explorer_state.selected)
+                .and_then(TreeItem::object_ref)
+                .cloned();
+            let Some(object) = object else { return };
+            if !object.kind.supports_definition() {
+                app.status_message = "no definition for this object".to_string();
+                return;
+            }
+            crate::mode::definition_viewer::open(app, object);
+        }
         KeyCode::Char('s') => {
             use crate::db::quote::{quote_mysql, quote_pg, quote_sqlite};
 
