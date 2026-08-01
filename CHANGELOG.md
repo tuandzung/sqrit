@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-07-16
+
+### Added
+
+- `d` in Explorer opens a centered, scrollable definition viewer for supported views, materialized views, indexes, triggers, functions, and procedures.
+- Definition loading uses backend-native metadata through `Database::object_definition`; PostgreSQL overloads use identity arguments, and MySQL index DDL is reconstructed from `SHOW CREATE TABLE`.
+- `y` copies ready DDL; Loading and Error states remain inside the modal, stale async responses are ignored, and reopening retries without a cache.
+
 ## [0.4.0] - 2026-07-16
 
 ### Added

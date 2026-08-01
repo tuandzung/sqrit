@@ -19,6 +19,7 @@ The lazygit of SQL databases. Connect, query, browse — from the terminal.
 - **Fuzzy row filter**: `/` in Results live-filters loaded rows by subsequence match across all columns; matched chars highlighted
 - **Query history**: every executed query persisted to `~/.sqrit/history/<connection>.jsonl`, picker via `<space>h`
 - **Cell viewer**: `v` in Results opens a modal with raw/formatted toggle (pretty JSON, hex blobs, timezone-aware dates)
+- **Definition viewer**: `d` in Explorer loads backend-native DDL for views, materialized views, indexes, triggers, functions, and procedures
 - **Query cancel**: `<space>z` cancels the running query at the DB level (SQLite interrupt, PG `pg_cancel_backend`, MySQL `KILL QUERY`)
 - **Bracketed paste**: multi-line clipboard input survives Insert mode (no more LF → `j`)
 - **Cross-platform clipboard**: native `wl-copy` on Linux/Wayland; arboard everywhere else
@@ -57,6 +58,7 @@ Press `?` in Query Normal, Explorer, or Results for a live help overlay listing 
 | `j/k` or Up/Down | Navigate items |
 | Enter | Expand/collapse the selected node |
 | `s` | `SELECT * FROM <ns>.<obj> LIMIT 100` (tables / views / materialized views only) |
+| `d` | Open copy-ready DDL for the selected supported object |
 | `q` | Back to query editor |
 
 #### Query Editor — Normal Mode
@@ -106,6 +108,13 @@ Press `?` in Query Normal, Explorer, or Results for a live help overlay listing 
 | `y` | Copy displayed string to clipboard |
 | `j/k` | Scroll |
 | `Esc` | Close |
+
+#### Definition Viewer
+| Key | Action |
+|-----|--------|
+| `j/k` | Scroll |
+| `y` | Copy ready DDL to the clipboard |
+| `Esc` | Close and return to Explorer |
 
 #### Space Command Palette
 A leading `<space>` from Query Normal, Explorer, or Results arms a one-shot palette. The next key dispatches:
@@ -211,7 +220,7 @@ Single `App` struct owns all state. Three core layers:
 
 1. **Database** (`src/db/`) — `Database` trait with adapters per backend. All DB ops go through this trait. Async via `tokio::spawn` + `mpsc` channel — UI never blocks on DB calls.
 
-2. **Modes** (`src/mode.rs` + `src/mode/`) — flat `Mode` enum dispatches via a `ModeHandler { dispatch, bindings, handle_paste }` trait. Help overlay reads `bindings()` from the same impl block as the dispatch, so a new key without a help entry is a one-file omission PR review catches. Modes: Picker, Explorer, QueryNormal, QueryInsert, Results, ResultsFilter, HistoryPicker, ThemePicker, Help, CellViewer.
+2. **Modes** (`src/mode.rs` + `src/mode/`) — flat `Mode` enum dispatches via a `ModeHandler { dispatch, bindings, handle_paste }` trait. Help overlay reads `bindings()` from the same impl block as the dispatch, so a new key without a help entry is a one-file omission PR review catches. Modes: Picker, Explorer, QueryNormal, QueryInsert, Results, ResultsFilter, HistoryPicker, ThemePicker, Help, CellViewer, DefinitionViewer.
 
 3. **Event loop** (`src/app.rs`) — 100ms poll loop. Spawns async DB tasks, drains results via `mpsc` channel. Connection happens async on picker selection — adapter created, connected, and schema loaded in a single spawned task.
 

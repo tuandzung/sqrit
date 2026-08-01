@@ -20,16 +20,16 @@ Explorer omits the namespace row when exactly one namespace exists.
 ### Object Kind (v0.3)
 A schema object's category. Explorer uses it to group objects, decide whether `s` can run `SELECT *`, and name status messages.
 
-| Kind | SQLite | PostgreSQL | MySQL | `s` |
-|------|--------|------------|-------|-----|
-| Table | ✓ | ✓ | ✓ | ✓ |
-| View | ✓ | ✓ | ✓ | ✓ |
-| Materialized View | — | ✓ | — | ✓ |
-| Index | ✓ | ✓ | ✓ | — |
-| Trigger | ✓ | ✓ | ✓ | — |
-| Function | — | ✓ | ✓ | — |
-| Procedure | — | ✓ | ✓ | — |
-| Sequence | — | ✓ | — | — |
+| Kind | SQLite | PostgreSQL | MySQL | `s` | `d` |
+|------|--------|------------|-------|-----|-----|
+| Table | ✓ | ✓ | ✓ | ✓ | — |
+| View | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Materialized View | — | ✓ | — | ✓ | ✓ |
+| Index | ✓ | ✓ | ✓ | — | ✓ |
+| Trigger | ✓ | ✓ | ✓ | — | ✓ |
+| Function | — | ✓ | ✓ | — | ✓ |
+| Procedure | — | ✓ | ✓ | — | ✓ |
+| Sequence | — | ✓ | — | — | — |
 
 ### Query
 SQL text edited in the query pane. `Enter` in Normal mode and `Ctrl+Enter` in Insert mode execute the whole buffer. `gs` in Normal mode executes only the statement under the cursor and records only that source slice in history.
@@ -104,6 +104,11 @@ Colored via optional `hint_bar_bg`, `hint_bar_fg`, `hint_bar_key`, `hint_bar_sep
 
 ### Cell Viewer (v0.2)
 Press `v` on a selected cell in Results to open a read-only modal with the full value. Long text is scrollable; blobs render as hex. `Tab` toggles between **raw** and **formatted** views (JSON pretty-print for text starting with `{` or `[`; chrono-formatted local time for date/timestamp column types). `y` copies the currently displayed form to the clipboard. Esc closes. No in-place editing in v0.2 — DML generation remains deferred.
+
+### Definition Viewer (v0.4)
+Press `d` on a supported Explorer object to open a centered read-only modal. The modal owns `Loading`, `Ready`, and `Error` states; `j/k` scroll, `y` copies ready DDL, and Esc returns to Explorer. Every open performs a fresh adapter lookup, and request IDs discard stale async responses.
+
+Supported definitions are views, materialized views, indexes, triggers, functions, and procedures where the backend exposes them. PostgreSQL routines use identity arguments to distinguish overloads. Tables and sequences remain unsupported.
 
 ### Query History (v0.2)
 Per-connection ring of executed queries stored at `~/.sqrit/history/<connection-name>.jsonl` (append-only, capped at 500 entries, rotated on overflow). Each entry: `ts` (ISO 8601 UTC), `sql`, `duration_ms`, `status` (`ok`/`error`), `rows`. Accessed via `<space>h`, which opens a picker modal: newest-first, type to substring-filter on the SQL text, Enter pastes the selected query into the editor (never auto-executes — destructive-query safety), Esc cancels.
