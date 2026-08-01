@@ -11,6 +11,7 @@ fn every_mode_has_at_least_one_binding() {
         Mode::ThemePicker,
         Mode::Help,
         Mode::CellViewer,
+        Mode::DefinitionViewer,
         Mode::HistoryPicker,
         Mode::ResultsFilter,
     ] {
