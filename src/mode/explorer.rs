@@ -94,8 +94,7 @@ pub fn handle_key(key: KeyEvent, app: &mut App) {
                     }
                     _ => quote_sqlite(name),
                 };
-                app.results_state.reset_pagination();
-                app.pending_query = Some(format!("SELECT * FROM {qualified} LIMIT 100"));
+                app.queue_query(format!("SELECT * FROM {qualified} LIMIT 100"), None);
                 app.switch_pane(Mode::Results, crate::app::FocusedPane::Results);
             }
         }

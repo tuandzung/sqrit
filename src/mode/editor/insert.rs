@@ -66,7 +66,7 @@ fn update_autocomplete(app: &mut App) {
 pub fn handle_key(key: KeyEvent, app: &mut App) {
     match key.code {
         KeyCode::Enter if key.modifiers.contains(KeyModifiers::CONTROL) => {
-            app.pending_query = Some(app.editor.text());
+            app.queue_query(app.editor.text(), None);
         }
         KeyCode::Tab =>
         {

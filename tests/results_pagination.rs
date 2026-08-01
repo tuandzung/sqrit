@@ -82,6 +82,7 @@ fn results_mode_page_down() {
     let mut app = make_paginated_app();
     app.last_query = Some("SELECT * FROM t".to_string());
     app.results_state.has_next_page = true;
+    app.status_message = "running statement 1/2".to_string();
 
     let key = crossterm::event::KeyEvent::new(
         crossterm::event::KeyCode::PageDown,
@@ -92,6 +93,7 @@ fn results_mode_page_down() {
 
     assert_eq!(app.results_state.page_offset, app.results_state.page_size);
     assert_eq!(app.pending_query, Some("SELECT * FROM t".to_string()));
+    assert!(app.status_message.is_empty());
 }
 
 // T14 #6: PgUp in results mode goes to previous page
@@ -101,6 +103,7 @@ fn results_mode_page_up() {
     app.last_query = Some("SELECT * FROM t".to_string());
     app.results_state.page_offset = app.results_state.page_size;
     app.results_state.has_next_page = true;
+    app.status_message = "running statement 1/2".to_string();
 
     let key = crossterm::event::KeyEvent::new(
         crossterm::event::KeyCode::PageUp,
@@ -111,6 +114,7 @@ fn results_mode_page_up() {
 
     assert_eq!(app.results_state.page_offset, 0);
     assert_eq!(app.pending_query, Some("SELECT * FROM t".to_string()));
+    assert!(app.status_message.is_empty());
 }
 
 // T14 #7: execute_pending stores last_query and uses paginated execution for SELECT
@@ -167,4 +171,31 @@ async fn execute_pending_paginates_select() {
 
     let result = app.results.as_ref().unwrap();
     assert_eq!(result.rows.len(), 1); // remaining row
+}
+
+#[tokio::test]
+async fn comment_prefixed_selected_sql_uses_pagination() {
+    let mut app = make_paginated_app();
+    app.mode = Mode::QueryNormal;
+    app.focused_pane = FocusedPane::Query;
+    app.active_connection = Some("test".to_string());
+    app.db.as_mut().unwrap().connect().await.unwrap();
+    app.results_state.page_size = 2;
+    app.editor
+        .insert_str("-- selected\nSELECT column1 FROM (VALUES (1), (2), (3));");
+
+    for code in [
+        crossterm::event::KeyCode::Char('g'),
+        crossterm::event::KeyCode::Char('s'),
+    ] {
+        app.handle_key_event(crossterm::event::KeyEvent::new(
+            code,
+            crossterm::event::KeyModifiers::NONE,
+        ));
+    }
+    app.execute_pending();
+    common::wait_for_query(&mut app, std::time::Duration::from_secs(5)).await;
+
+    assert_eq!(app.results.as_ref().unwrap().rows.len(), 2);
+    assert!(app.results_state.has_next_page);
 }

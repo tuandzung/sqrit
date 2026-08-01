@@ -135,8 +135,8 @@ pub fn handle_key(key: KeyEvent, app: &mut App) {
             #[allow(clippy::collapsible_match)]
             if app.results_state.has_next_page {
                 app.results_state.page_down();
-                if let Some(ref q) = app.last_query {
-                    app.pending_query = Some(q.clone());
+                if let Some(q) = app.last_query.clone() {
+                    app.queue_query_page(q);
                 }
             }
         }
@@ -145,8 +145,8 @@ pub fn handle_key(key: KeyEvent, app: &mut App) {
             #[allow(clippy::collapsible_match)]
             if app.results_state.page_offset > 0 {
                 app.results_state.page_up();
-                if let Some(ref q) = app.last_query {
-                    app.pending_query = Some(q.clone());
+                if let Some(q) = app.last_query.clone() {
+                    app.queue_query_page(q);
                 }
             }
         }

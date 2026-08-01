@@ -1,6 +1,7 @@
 use std::io;
 use std::time::Instant;
 
+use crossterm::cursor::SetCursorStyle;
 use crossterm::event::{self, DisableBracketedPaste, EnableBracketedPaste, Event, KeyEventKind};
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
@@ -16,7 +17,7 @@ use tokio::sync::mpsc;
 use crate::explorer::ExplorerState;
 use crate::results::ResultsState;
 use crate::results_render::{matched_ranges_for, render_cell};
-use crate::sql::{tokenize, TokenKind};
+use crate::sql::{tokenize, StatementRange, TokenKind};
 
 use crate::autocomplete::AutocompleteState;
 use crate::config::Config;
@@ -27,34 +28,47 @@ use crate::mode::editor::normal::NormalState;
 use crate::mode::Mode;
 use crate::picker::PickerState;
 
-/// Install a panic hook that restores the terminal — disables bracketed
-/// paste, leaves the alternate screen, and turns raw mode back off — so a
-/// panic doesn't leave the user's shell unusable. Idempotent: only
-/// installs the hook once even if `run()` is called multiple times.
+const DEFAULT_CURSOR_STYLE: SetCursorStyle = SetCursorStyle::DefaultUserShape;
+
+fn restore_terminal() {
+    let _ = disable_raw_mode();
+    let _ = crossterm::execute!(
+        io::stdout(),
+        DisableBracketedPaste,
+        LeaveAlternateScreen,
+        DEFAULT_CURSOR_STYLE
+    );
+}
+
+/// Install a panic hook that restores the terminal so a panic doesn't leave
+/// the user's shell unusable. Idempotent across repeated `run()` calls.
 fn install_panic_hook_for_terminal_restore() {
     use std::sync::Once;
     static INIT: Once = Once::new();
     INIT.call_once(|| {
         let prev = std::panic::take_hook();
         std::panic::set_hook(Box::new(move |info| {
-            let _ = disable_raw_mode();
-            let _ = crossterm::execute!(io::stdout(), DisableBracketedPaste, LeaveAlternateScreen);
+            restore_terminal();
             prev(info);
         }));
     });
 }
 
-/// RAII guard that restores the terminal on drop. Pairs with the
-/// `EnableBracketedPaste` + `enable_raw_mode` setup in `App::run` so a
-/// `?`-propagated error mid-loop (e.g. an `event::read()` or `draw()`
-/// failure) still leaves the shell usable. The panic hook covers
-/// unwinds; this guard covers normal early returns.
+/// Restores raw mode, alternate screen, bracketed paste, and cursor style on
+/// normal early returns. The panic hook covers unwinds.
 struct TerminalRestoreGuard;
 
 impl Drop for TerminalRestoreGuard {
     fn drop(&mut self) {
-        let _ = disable_raw_mode();
-        let _ = crossterm::execute!(io::stdout(), DisableBracketedPaste, LeaveAlternateScreen);
+        restore_terminal();
+    }
+}
+
+fn cursor_style(mode: Mode) -> SetCursorStyle {
+    match mode {
+        Mode::QueryNormal => SetCursorStyle::SteadyBlock,
+        Mode::QueryInsert => SetCursorStyle::BlinkingBlock,
+        _ => DEFAULT_CURSOR_STYLE,
     }
 }
 
@@ -106,6 +120,7 @@ pub struct App {
     pub results: Option<crate::db::types::QueryResult>,
     pub query_status: QueryStatus,
     pub pending_query: Option<String>,
+    pub selected_statement: Option<StatementRange>,
     pub results_state: ResultsState,
     pub fuzzy_filter: crate::filter::FuzzyFilter,
     pub last_query: Option<String>,
@@ -168,6 +183,7 @@ impl App {
             results: None,
             query_status: QueryStatus::Idle,
             pending_query: None,
+            selected_statement: None,
             results_state: ResultsState::new(),
             fuzzy_filter: crate::filter::FuzzyFilter::new(),
             last_query: None,
@@ -207,6 +223,7 @@ impl App {
                     if query_id != self.query_id {
                         continue;
                     }
+                    self.clear_statement_status();
                     self.record_history(&status, result.as_ref());
                     self.query_status = status;
                     self.results_state.has_next_page = has_next_page;
@@ -326,8 +343,27 @@ impl App {
             }
         }
 
+        let had_selection = self.selected_statement.is_some();
+        let cursor_before = self.editor.cursor();
+        let text_before = had_selection.then(|| self.editor.text());
+
         let mode = self.mode;
         mode.handle_key(key, self);
+
+        if had_selection
+            && (self.editor.cursor() != cursor_before
+                || text_before.as_deref() != Some(self.editor.text().as_str()))
+        {
+            self.selected_statement = None;
+            self.clear_statement_status();
+        }
+    }
+
+    pub fn handle_paste_event(&mut self, text: &str) {
+        self.selected_statement = None;
+        self.clear_statement_status();
+        let mode = self.mode;
+        mode.handler().handle_paste(text, self);
     }
 
     /// Drop the active DB handle, clear cached schema + connection label,
@@ -387,11 +423,35 @@ impl App {
         }
     }
 
+    pub fn queue_query(&mut self, query: String, statement: Option<StatementRange>) {
+        self.results_state.reset_pagination();
+        if statement.is_none() {
+            self.clear_statement_status();
+        }
+        self.selected_statement = statement;
+        self.pending_query = Some(query);
+    }
+
+    pub fn queue_query_page(&mut self, query: String) {
+        self.clear_statement_status();
+        self.selected_statement = None;
+        self.pending_query = Some(query);
+    }
+
+    fn clear_statement_status(&mut self) {
+        if self.status_message.starts_with("running statement ") {
+            self.status_message.clear();
+        }
+    }
+
     pub fn execute_pending(&mut self) {
         let query = match self.pending_query.take() {
             Some(q) => q,
             None => return,
         };
+        if self.selected_statement.is_none() {
+            self.clear_statement_status();
+        }
 
         self.query_id += 1;
         let query_id = self.query_id;
@@ -399,7 +459,13 @@ impl App {
         self.query_started_at = Some(Instant::now());
         self.last_query = Some(query.clone());
 
-        let is_select = query.trim_start().to_uppercase().starts_with("SELECT");
+        let backend = self
+            .active_connection
+            .as_ref()
+            .and_then(|name| self.config.get_connection(name))
+            .map(|connection| connection.db_type.clone())
+            .unwrap_or(crate::config::DbType::Sqlite);
+        let can_paginate = crate::sql::query_can_paginate(&query, &backend);
 
         if let Some(ref db) = self.db {
             let db: Box<dyn Database> = db.clone_box();
@@ -409,7 +475,7 @@ impl App {
             let tx = self.async_tx.clone();
 
             tokio::spawn(async move {
-                let result = if is_select {
+                let result = if can_paginate {
                     db.execute_paginated(&query, offset, limit).await
                 } else {
                     db.execute(&query).await
@@ -417,7 +483,7 @@ impl App {
 
                 let msg = match result {
                     Ok(mut r) => {
-                        let has_next_page = if is_select {
+                        let has_next_page = if can_paginate {
                             if r.rows.len() > page_size {
                                 r.rows.truncate(page_size);
                                 true
@@ -477,8 +543,13 @@ impl App {
         let backend = CrosstermBackend::new(io::stdout());
         let mut terminal = Terminal::new(backend)?;
         terminal.clear()?;
+        let mut styled_mode = None;
 
         loop {
+            if styled_mode != Some(self.mode) {
+                crossterm::execute!(terminal.backend_mut(), cursor_style(self.mode))?;
+                styled_mode = Some(self.mode);
+            }
             terminal.draw(|f| self.render(f))?;
 
             if event::poll(std::time::Duration::from_millis(100))? {
@@ -493,7 +564,7 @@ impl App {
                         // V9: paste events bypass the space-prefix
                         // dispatcher — a pasted leading space must not
                         // arm the command palette.
-                        self.mode.handler().handle_paste(&text, self);
+                        self.handle_paste_event(&text);
                     }
                     _ => {}
                 }
@@ -946,7 +1017,7 @@ impl App {
         frame.render_widget(Paragraph::new(lines), inner);
     }
 
-    /// Computes scroll offset and absolute terminal position for the INSERT mode cursor.
+    /// Computes scroll offset and absolute terminal position for the query editor cursor.
     /// Returns `(scroll_offset, term_x, term_y)`.
     /// Pure function — no side effects, fully testable.
     pub fn insert_cursor_position(
@@ -993,8 +1064,11 @@ impl App {
         let query_paragraph = Paragraph::new(query_text).scroll((scroll_offset, 0));
         frame.render_widget(query_paragraph, inner);
 
-        // Show terminal cursor in INSERT mode (V8).
-        if self.mode == Mode::QueryInsert {
+        // Query modes show the editor cursor; other panes and overlays hide it.
+        if matches!(self.mode, Mode::QueryNormal | Mode::QueryInsert)
+            && inner.width > 0
+            && inner.height > 0
+        {
             frame.set_cursor_position(ratatui::layout::Position {
                 x: term_x,
                 y: term_y,
@@ -1184,7 +1258,11 @@ impl App {
         };
 
         let status = if let QueryStatus::Error(e) = &self.query_status {
-            format!("ERR: {}", e)
+            if self.status_message.is_empty() {
+                format!("ERR: {}", e)
+            } else {
+                format!("ERR: {} | {}", e, self.status_message)
+            }
         } else if self.status_message.is_empty() {
             query_status.to_string()
         } else if query_status.is_empty() {
@@ -1212,22 +1290,52 @@ impl App {
         }
     }
 
+    fn push_editor_span(&self, spans: &mut Vec<Span<'_>>, text: &str, offset: usize, style: Style) {
+        let Some(selected) = self.selected_statement.as_ref().map(|s| &s.range) else {
+            spans.push(Span::styled(text.to_string(), style));
+            return;
+        };
+        let end = offset + text.len();
+        let selected_start = selected.start.max(offset).min(end);
+        let selected_end = selected.end.max(offset).min(end);
+
+        if offset < selected_start {
+            spans.push(Span::styled(
+                text[..selected_start - offset].to_string(),
+                style,
+            ));
+        }
+        if selected_start < selected_end {
+            spans.push(Span::styled(
+                text[selected_start - offset..selected_end - offset].to_string(),
+                style.bg(self.theme.selection_bg),
+            ));
+        }
+        if selected_end < end {
+            spans.push(Span::styled(
+                text[selected_end - offset..].to_string(),
+                style,
+            ));
+        }
+    }
+
     fn highlighted_lines(&self) -> Vec<Line<'_>> {
         let text = self.editor.text();
         let tokens = tokenize(&text);
         let mut lines: Vec<Line<'_>> = Vec::new();
         let mut current_spans: Vec<Span<'_>> = Vec::new();
+        let mut offset = 0usize;
 
         for token in tokens {
+            let style = self.token_style(&token.kind);
             for (i, line_text) in token.text.split('\n').enumerate() {
                 if i > 0 {
                     lines.push(Line::from(std::mem::take(&mut current_spans)));
+                    offset += 1;
                 }
                 if !line_text.is_empty() {
-                    current_spans.push(Span::styled(
-                        line_text.to_string(),
-                        self.token_style(&token.kind),
-                    ));
+                    self.push_editor_span(&mut current_spans, line_text, offset, style);
+                    offset += line_text.len();
                 }
             }
         }
@@ -1282,5 +1390,24 @@ impl App {
         }
 
         frame.render_stateful_widget(list, area, &mut state);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::Command;
+
+    fn cursor_style_ansi(mode: Mode) -> String {
+        let mut ansi = String::new();
+        cursor_style(mode).write_ansi(&mut ansi).unwrap();
+        ansi
+    }
+
+    #[test]
+    fn cursor_style_matches_mode() {
+        assert_eq!(cursor_style_ansi(Mode::QueryNormal), "\x1b[2 q");
+        assert_eq!(cursor_style_ansi(Mode::QueryInsert), "\x1b[1 q");
+        assert_eq!(cursor_style_ansi(Mode::Results), "\x1b[0 q");
     }
 }
