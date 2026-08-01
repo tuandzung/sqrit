@@ -5,11 +5,12 @@ use async_trait::async_trait;
 use sqlx::mysql::{MySqlConnection, MySqlPoolOptions};
 use sqlx::{ConnectOptions, Connection, Row, TypeInfo, ValueRef};
 
+use super::quote::quote_mysql;
 use super::types::{
-    sqlx_result_columns, ColumnInfo, IndexObject, Namespace, QueryResult, RoutineObject,
-    SchemaInfo, TableObject, TriggerObject, Value, ViewObject,
+    sqlx_result_columns, ColumnInfo, IndexObject, Namespace, ObjectKind, ObjectRef, QueryResult,
+    RoutineObject, SchemaInfo, TableObject, TriggerObject, Value, ViewObject,
 };
-use super::Database;
+use super::{finish_definition, Database};
 
 fn mysql_row_to_value(row: &sqlx::mysql::MySqlRow, i: usize) -> Value {
     row.try_get_raw(i).map_or(Value::Null, |raw| {
@@ -159,6 +160,30 @@ impl MySqlAdapter {
             })
             .collect())
     }
+
+    async fn show_create(&self, sql: &str, definition_column: usize) -> anyhow::Result<String> {
+        let pool = self
+            .pool
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("not connected"))?;
+        let row = sqlx::query(sql).fetch_one(pool).await?;
+        Ok(row.try_get(definition_column)?)
+    }
+}
+
+fn mysql_index_clause(create_table: &str, index_name: &str) -> Option<String> {
+    let quoted = quote_mysql(index_name);
+    create_table.lines().find_map(|line| {
+        let clause = line.trim().trim_end_matches(',');
+        let matches = if index_name.eq_ignore_ascii_case("PRIMARY") {
+            clause.starts_with("PRIMARY KEY ")
+        } else {
+            ["KEY ", "UNIQUE KEY ", "FULLTEXT KEY ", "SPATIAL KEY "]
+                .iter()
+                .any(|prefix| clause.starts_with(&format!("{prefix}{quoted} ")))
+        };
+        matches.then(|| clause.to_string())
+    })
 }
 
 #[cfg(test)]
@@ -427,6 +452,52 @@ impl Database for MySqlAdapter {
         })
     }
 
+    async fn object_definition(&self, object: &ObjectRef) -> anyhow::Result<Option<String>> {
+        let qualified = format!(
+            "{}.{}",
+            quote_mysql(&object.namespace),
+            quote_mysql(&object.name)
+        );
+        let definition = match object.kind {
+            ObjectKind::View => {
+                self.show_create(&format!("SHOW CREATE VIEW {qualified}"), 1)
+                    .await?
+            }
+            ObjectKind::Trigger => {
+                self.show_create(&format!("SHOW CREATE TRIGGER {qualified}"), 2)
+                    .await?
+            }
+            ObjectKind::Function => {
+                self.show_create(&format!("SHOW CREATE FUNCTION {qualified}"), 2)
+                    .await?
+            }
+            ObjectKind::Procedure => {
+                self.show_create(&format!("SHOW CREATE PROCEDURE {qualified}"), 2)
+                    .await?
+            }
+            ObjectKind::Index => {
+                let relation = object
+                    .relation
+                    .as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("index is missing its owning relation"))?;
+                let table = format!(
+                    "{}.{}",
+                    quote_mysql(&object.namespace),
+                    quote_mysql(relation)
+                );
+                let create_table = self
+                    .show_create(&format!("SHOW CREATE TABLE {table}"), 1)
+                    .await?;
+                let clause = mysql_index_clause(&create_table, &object.name).ok_or_else(|| {
+                    anyhow::anyhow!("index {} missing from SHOW CREATE TABLE", object.name)
+                })?;
+                format!("ALTER TABLE {table} ADD {clause}")
+            }
+            _ => return Ok(None),
+        };
+        Ok(Some(finish_definition(&definition)))
+    }
+
     fn clone_box(&self) -> Box<dyn Database> {
         Box::new(Self {
             url: self.url.clone(),
@@ -440,7 +511,21 @@ impl Database for MySqlAdapter {
 
 #[cfg(test)]
 mod tx_keyword_tests {
-    use super::tx_keyword;
+    use super::{mysql_index_clause, tx_keyword};
+
+    #[test]
+    fn extracts_named_and_primary_index_clauses_from_show_create_table() {
+        let create = "CREATE TABLE `users` (\n  `id` int NOT NULL,\n  `email` varchar(255),\n  PRIMARY KEY (`id`),\n  UNIQUE KEY `users_email_idx` (`email`)\n) ENGINE=InnoDB";
+        assert_eq!(
+            mysql_index_clause(create, "users_email_idx"),
+            Some("UNIQUE KEY `users_email_idx` (`email`)".to_string())
+        );
+        assert_eq!(
+            mysql_index_clause(create, "PRIMARY"),
+            Some("PRIMARY KEY (`id`)".to_string())
+        );
+        assert_eq!(mysql_index_clause(create, "missing"), None);
+    }
 
     #[test]
     fn begin_after_line_comment() {
