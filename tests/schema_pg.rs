@@ -115,10 +115,11 @@ async fn pg_system_schemas_are_filtered() {
 #[ignore]
 async fn pg_schema_info_distinguishes_overloaded_routines() {
     let adapter = fresh_adapter().await;
-    seed(&adapter).await;
     for sql in [
-        "CREATE OR REPLACE FUNCTION sqrit_t12.overloaded(integer) RETURNS integer LANGUAGE sql AS 'SELECT $1'",
-        "CREATE OR REPLACE FUNCTION sqrit_t12.overloaded(text) RETURNS text LANGUAGE sql AS 'SELECT $1'",
+        "DROP SCHEMA IF EXISTS sqrit_t12_overloads CASCADE",
+        "CREATE SCHEMA sqrit_t12_overloads",
+        "CREATE FUNCTION sqrit_t12_overloads.overloaded(integer) RETURNS integer LANGUAGE sql AS 'SELECT $1'",
+        "CREATE FUNCTION sqrit_t12_overloads.overloaded(text) RETURNS text LANGUAGE sql AS 'SELECT $1'",
     ] {
         adapter.execute(sql).await.unwrap();
     }
@@ -126,7 +127,7 @@ async fn pg_schema_info_distinguishes_overloaded_routines() {
     let namespace = schema
         .namespaces
         .iter()
-        .find(|namespace| namespace.name == "sqrit_t12")
+        .find(|namespace| namespace.name == "sqrit_t12_overloads")
         .unwrap();
     let identities = namespace
         .functions
