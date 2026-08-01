@@ -472,13 +472,15 @@ async fn object_definition_returns_postgres_native_ddl() {
         "DROP VIEW IF EXISTS \"odd \"\"view\"",
         "DROP FUNCTION IF EXISTS definition_trigger_fn() CASCADE",
         "DROP FUNCTION IF EXISTS definition_lookup(integer)",
+        "DROP FUNCTION IF EXISTS definition_lookup(text)",
         "DROP PROCEDURE IF EXISTS definition_noop()",
         "CREATE TABLE definition_users(id integer, email text)",
         "CREATE VIEW definition_users_v AS SELECT id FROM definition_users",
         "CREATE VIEW \"odd \"\"view\" AS SELECT 1 AS id",
         "CREATE MATERIALIZED VIEW definition_users_mv AS SELECT id FROM definition_users",
         "CREATE INDEX definition_users_email_idx ON definition_users(email)",
-        "CREATE FUNCTION definition_lookup(integer) RETURNS integer LANGUAGE sql AS 'SELECT $1'",
+        "CREATE FUNCTION definition_lookup(integer) RETURNS integer LANGUAGE sql AS 'SELECT $1 + 11'",
+        "CREATE FUNCTION definition_lookup(text) RETURNS text LANGUAGE sql AS 'SELECT $1 || ''text-marker'''",
         "CREATE PROCEDURE definition_noop() LANGUAGE sql AS 'SELECT 1'",
         "CREATE FUNCTION definition_trigger_fn() RETURNS trigger LANGUAGE plpgsql AS 'BEGIN RETURN NEW; END'",
         "CREATE TRIGGER definition_users_trigger BEFORE UPDATE ON definition_users FOR EACH ROW EXECUTE FUNCTION definition_trigger_fn()",
@@ -523,6 +525,31 @@ async fn object_definition_returns_postgres_native_ddl() {
         assert!(ddl.ends_with(';'), "missing terminator: {ddl}");
         assert!(ddl.to_uppercase().contains("CREATE"), "not DDL: {ddl}");
     }
+
+    let integer = adapter
+        .object_definition(&pg_object(
+            ObjectKind::Function,
+            "definition_lookup",
+            None,
+            Some("integer"),
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    let text = adapter
+        .object_definition(&pg_object(
+            ObjectKind::Function,
+            "definition_lookup",
+            None,
+            Some("text"),
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(integer.contains("$1 + 11"));
+    assert!(!integer.contains("text-marker"));
+    assert!(text.contains("text-marker"));
+    assert!(!text.contains("$1 + 11"));
     let escaped = adapter
         .object_definition(&pg_object(ObjectKind::View, "odd \"view", None, None))
         .await
@@ -539,6 +566,35 @@ async fn object_definition_returns_postgres_native_ddl() {
         ))
         .await
         .is_err());
+}
+
+#[tokio::test]
+#[ignore]
+async fn object_definition_returns_partitioned_postgres_index_ddl() {
+    let adapter = setup().await;
+    for sql in [
+        "DROP TABLE IF EXISTS definition_partitioned_index_users CASCADE",
+        "CREATE TABLE definition_partitioned_index_users(id integer) PARTITION BY RANGE (id)",
+        "CREATE INDEX definition_partitioned_index_users_id_idx ON definition_partitioned_index_users(id)",
+    ] {
+        adapter.execute(sql).await.unwrap();
+    }
+
+    let ddl = adapter
+        .object_definition(&pg_object(
+            ObjectKind::Index,
+            "definition_partitioned_index_users_id_idx",
+            Some("definition_partitioned_index_users"),
+            None,
+        ))
+        .await
+        .unwrap()
+        .expect("partitioned index definition");
+    assert!(
+        ddl.to_uppercase().contains("CREATE INDEX"),
+        "not index DDL: {ddl}"
+    );
+    assert!(ddl.contains("definition_partitioned_index_users_id_idx"));
 }
 
 // T7: in_transaction() reports true after BEGIN, false again after ROLLBACK.

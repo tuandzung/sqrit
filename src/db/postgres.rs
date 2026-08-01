@@ -555,7 +555,7 @@ impl Database for PgAdapter {
                 "SELECT pg_get_indexdef(c.oid)
                  FROM pg_class c
                  JOIN pg_namespace n ON n.oid = c.relnamespace
-                 WHERE n.nspname = $1 AND c.relname = $2 AND c.relkind = 'i'",
+                 WHERE n.nspname = $1 AND c.relname = $2 AND c.relkind IN ('i', 'I')",
             )
             .bind(&object.namespace)
             .bind(&object.name)
