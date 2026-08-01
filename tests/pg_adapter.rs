@@ -51,6 +51,18 @@ fn pg_object(
     }
 }
 
+#[tokio::test]
+async fn object_definition_returns_none_for_unsupported_kind_without_connection() {
+    let adapter = PgAdapter::new(&db_url());
+    assert_eq!(
+        adapter
+            .object_definition(&pg_object(ObjectKind::Table, "users", None, None))
+            .await
+            .unwrap(),
+        None
+    );
+}
+
 // #1 connect establishes connection, list_tables works
 #[tokio::test]
 #[ignore]

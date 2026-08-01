@@ -513,6 +513,9 @@ impl Database for PgAdapter {
     }
 
     async fn object_definition(&self, object: &ObjectRef) -> anyhow::Result<Option<String>> {
+        if !object.kind.supports_definition() {
+            return Ok(None);
+        }
         let pool = self
             .pool
             .as_ref()
