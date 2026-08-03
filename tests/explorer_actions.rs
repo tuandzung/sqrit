@@ -3,7 +3,9 @@ mod common;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use sqrit::app::{App, FocusedPane, QueryStatus};
 use sqrit::config::DbType;
-use sqrit::db::types::{ColumnInfo, IndexObject, Namespace, ObjectKind, SchemaInfo, TableObject};
+use sqrit::db::types::{
+    ColumnInfo, IndexObject, Namespace, ObjectKind, SchemaInfo, SequenceObject, TableObject,
+};
 use sqrit::explorer::{NodeKey, TreeItem};
 use sqrit::mode::Mode;
 
@@ -54,9 +56,7 @@ fn select_object(app: &mut App, kind: ObjectKind) {
         .explorer_state
         .items()
         .iter()
-        .position(
-            |item| matches!(item, TreeItem::Object { kind: item_kind, .. } if *item_kind == kind),
-        )
+        .position(|item| matches!(item, TreeItem::Object { object, .. } if object.kind == kind))
         .unwrap();
 }
 
@@ -210,4 +210,57 @@ fn e_switches_to_explorer() {
 
     assert_eq!(app.mode, Mode::Explorer);
     assert_eq!(app.focused_pane, FocusedPane::Explorer);
+}
+
+#[test]
+fn d_stays_in_explorer_for_group_table_column_and_sequence_nodes() {
+    let mut app = make_explorer_app(DbType::Sqlite, "");
+
+    app.explorer_state.selected = 0;
+    press(&mut app, KeyCode::Char('d'));
+    assert_eq!(app.mode, Mode::Explorer);
+    assert!(app.definition_viewer.is_none());
+
+    select_object(&mut app, ObjectKind::Table);
+    press(&mut app, KeyCode::Char('d'));
+    assert_eq!(app.mode, Mode::Explorer);
+    assert!(app.definition_viewer.is_none());
+
+    app.explorer_state.toggle_key(NodeKey::Object {
+        ns: String::new(),
+        kind: ObjectKind::Table,
+        name: "users".into(),
+    });
+    app.explorer_state.selected = app
+        .explorer_state
+        .items()
+        .iter()
+        .position(|item| matches!(item, TreeItem::Column { .. }))
+        .unwrap();
+    press(&mut app, KeyCode::Char('d'));
+    assert_eq!(app.mode, Mode::Explorer);
+    assert!(app.definition_viewer.is_none());
+
+    app.explorer_state.schema.as_mut().unwrap().namespaces[0]
+        .sequences
+        .push(SequenceObject {
+            name: "users_id_seq".into(),
+            last_value: None,
+        });
+    app.explorer_state.toggle_key(NodeKey::Group {
+        ns: String::new(),
+        kind: ObjectKind::Sequence,
+    });
+    app.explorer_state.selected = app
+        .explorer_state
+        .items()
+        .iter()
+        .position(|item| {
+            item.object_ref()
+                .is_some_and(|object| object.kind == ObjectKind::Sequence)
+        })
+        .unwrap();
+    press(&mut app, KeyCode::Char('d'));
+    assert_eq!(app.mode, Mode::Explorer);
+    assert!(app.definition_viewer.is_none());
 }

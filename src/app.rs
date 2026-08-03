@@ -90,6 +90,10 @@ pub enum AsyncResult {
     Cancelled {
         in_tx: bool,
     },
+    DefinitionLoaded {
+        request_id: u64,
+        result: Result<Option<String>, String>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -141,6 +145,8 @@ pub struct App {
     pub theme_picker: Option<crate::mode::theme_picker::ThemePickerState>,
     pub help: Option<crate::mode::help::HelpState>,
     pub cell_viewer: Option<crate::mode::cell_viewer::CellViewerState>,
+    pub definition_viewer: Option<crate::mode::definition_viewer::DefinitionViewerState>,
+    pub definition_request_id: u64,
     pub history_picker: Option<crate::mode::history_picker::HistoryPickerState>,
     pub clipboard_writer: crate::clipboard::ClipboardWriter,
     pub app_config: crate::config::AppConfig,
@@ -202,6 +208,8 @@ impl App {
             theme_picker: None,
             help: None,
             cell_viewer: None,
+            definition_viewer: None,
+            definition_request_id: 0,
             history_picker: None,
             clipboard_writer: crate::clipboard::ClipboardWriter::new(),
             app_config,
@@ -249,6 +257,28 @@ impl App {
                         "query cancelled".to_string()
                     };
                     self.query_status = QueryStatus::Idle;
+                }
+                AsyncResult::DefinitionLoaded { request_id, result } => {
+                    if request_id != self.definition_request_id
+                        || self.mode != Mode::DefinitionViewer
+                    {
+                        continue;
+                    }
+                    let Some(state) = self.definition_viewer.as_mut() else {
+                        continue;
+                    };
+                    state.scroll = 0;
+                    state.content = match result {
+                        Ok(Some(definition)) => {
+                            crate::mode::definition_viewer::DefinitionContent::Ready(definition)
+                        }
+                        Ok(None) => crate::mode::definition_viewer::DefinitionContent::Error(
+                            "definition unavailable".to_string(),
+                        ),
+                        Err(error) => {
+                            crate::mode::definition_viewer::DefinitionContent::Error(error)
+                        }
+                    };
                 }
             }
         }
@@ -643,6 +673,9 @@ impl App {
         if self.mode == Mode::CellViewer && self.cell_viewer.is_some() {
             self.render_cell_viewer(frame, content_area);
         }
+        if self.mode == Mode::DefinitionViewer && self.definition_viewer.is_some() {
+            self.render_definition_viewer(frame, content_area);
+        }
         if self.mode == Mode::HistoryPicker && self.history_picker.is_some() {
             self.render_history_picker(frame, content_area);
         }
@@ -738,20 +771,9 @@ impl App {
             crate::cell_viewer::ViewMode::Formatted => "formatted",
         };
         let title = format!(" Cell — {} ({}) ", state.column, view_label);
-        let title_w = title.chars().count();
-        let modal = Self::cell_viewer_modal_rect(area, title_w);
-        if modal.width == 0 || modal.height == 0 {
+        let Some(inner) = self.render_modal_frame(frame, area, &title) else {
             return;
-        }
-        frame.render_widget(Clear, modal);
-
-        let block = Block::default()
-            .title(title)
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(self.theme.border_focused))
-            .style(Style::default().bg(self.theme.bg).fg(self.theme.fg));
-        let inner = block.inner(modal);
-        frame.render_widget(block, modal);
+        };
 
         let body = state.displayed();
         let paragraph = Paragraph::new(body)
@@ -759,6 +781,59 @@ impl App {
             .scroll((state.scroll, 0))
             .style(Style::default().fg(self.theme.fg));
         frame.render_widget(paragraph, inner);
+    }
+
+    fn render_definition_viewer(&self, frame: &mut ratatui::Frame, area: Rect) {
+        use crate::mode::definition_viewer::DefinitionContent;
+
+        let Some(state) = self.definition_viewer.as_ref() else {
+            return;
+        };
+        let title = format!(" Definition — {} ", state.object.label());
+        let Some(inner) = self.render_modal_frame(frame, area, &title) else {
+            return;
+        };
+
+        let (body, style) = match &state.content {
+            DefinitionContent::Loading => {
+                ("Loading…".to_string(), Style::default().fg(self.theme.fg))
+            }
+            DefinitionContent::Ready(definition) => {
+                (definition.clone(), Style::default().fg(self.theme.fg))
+            }
+            DefinitionContent::Error(error) => (
+                format!("Error: {error}"),
+                Style::default().fg(self.theme.error),
+            ),
+        };
+        frame.render_widget(
+            Paragraph::new(body)
+                .wrap(ratatui::widgets::Wrap { trim: false })
+                .scroll((state.scroll, 0))
+                .style(style),
+            inner,
+        );
+    }
+
+    fn render_modal_frame(
+        &self,
+        frame: &mut ratatui::Frame,
+        area: Rect,
+        title: &str,
+    ) -> Option<Rect> {
+        let modal = Self::cell_viewer_modal_rect(area, title.chars().count());
+        if modal.width == 0 || modal.height == 0 {
+            return None;
+        }
+        frame.render_widget(Clear, modal);
+        let block = Block::default()
+            .title(title)
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(self.theme.border_focused))
+            .style(Style::default().bg(self.theme.bg).fg(self.theme.fg));
+        let inner = block.inner(modal);
+        frame.render_widget(block, modal);
+        Some(inner)
     }
 
     /// Rendered title for the help overlay block. Single source of truth
@@ -985,13 +1060,8 @@ impl App {
                         kind.group_label(),
                         count
                     ),
-                    crate::explorer::TreeItem::Object {
-                        kind,
-                        name,
-                        expanded,
-                        ..
-                    } => {
-                        let bullet = if kind.supports_select_star() {
+                    crate::explorer::TreeItem::Object { object, expanded } => {
+                        let bullet = if object.kind.supports_select_star() {
                             if *expanded {
                                 "▾"
                             } else {
@@ -1000,7 +1070,7 @@ impl App {
                         } else {
                             "•"
                         };
-                        format!("    {bullet} {name}")
+                        format!("    {bullet} {}", object.label())
                     }
                     crate::explorer::TreeItem::Column {
                         name, data_type, ..

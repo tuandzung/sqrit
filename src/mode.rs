@@ -1,4 +1,5 @@
 pub mod cell_viewer;
+pub mod definition_viewer;
 pub mod editor;
 pub mod explorer;
 pub mod help;
@@ -47,6 +48,7 @@ pub enum Mode {
     CellViewer,
     HistoryPicker,
     ResultsFilter,
+    DefinitionViewer,
 }
 
 impl Mode {
@@ -63,6 +65,7 @@ impl Mode {
             Mode::CellViewer => &cell_viewer::CellViewerHandler,
             Mode::HistoryPicker => &history_picker::HistoryPickerHandler,
             Mode::ResultsFilter => &results_filter::ResultsFilterHandler,
+            Mode::DefinitionViewer => &definition_viewer::DefinitionViewerHandler,
         }
     }
 
@@ -86,6 +89,7 @@ impl Mode {
             Mode::CellViewer => "CELL",
             Mode::HistoryPicker => "HISTORY",
             Mode::ResultsFilter => "FILTER",
+            Mode::DefinitionViewer => "DEFINITION",
         }
     }
 }

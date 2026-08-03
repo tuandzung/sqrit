@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use sqrit::db::sqlite::SqliteAdapter;
-use sqrit::db::types::Value;
+use sqrit::db::types::{ObjectKind, ObjectRef, Value};
 use sqrit::db::Database;
 
 async fn setup() -> (SqliteAdapter, tempfile::NamedTempFile) {
@@ -312,4 +312,72 @@ async fn select_expression_has_no_declared_type() {
 
     assert_eq!(result.columns[0].name, "x");
     assert_eq!(result.columns[0].data_type, None);
+}
+
+fn object(kind: ObjectKind, name: &str, relation: Option<&str>) -> ObjectRef {
+    ObjectRef {
+        namespace: String::new(),
+        kind,
+        name: name.into(),
+        relation: relation.map(str::to_string),
+        identity_arguments: None,
+    }
+}
+
+#[tokio::test]
+async fn object_definition_returns_sqlite_view_index_and_trigger_ddl() {
+    let (adapter, _file) = setup_with_table().await;
+    for sql in [
+        "CREATE VIEW active_users AS SELECT id FROM users WHERE active = 1",
+        "CREATE VIEW \"odd \"\"view\" AS SELECT id FROM users",
+        "CREATE INDEX users_name_idx ON users(name)",
+        "CREATE TRIGGER users_touch AFTER UPDATE ON users BEGIN SELECT 1; END",
+    ] {
+        adapter.execute(sql).await.unwrap();
+    }
+
+    let view = adapter
+        .object_definition(&object(ObjectKind::View, "active_users", None))
+        .await
+        .unwrap()
+        .unwrap();
+    let index = adapter
+        .object_definition(&object(ObjectKind::Index, "users_name_idx", Some("users")))
+        .await
+        .unwrap()
+        .unwrap();
+    let trigger = adapter
+        .object_definition(&object(ObjectKind::Trigger, "users_touch", Some("users")))
+        .await
+        .unwrap()
+        .unwrap();
+    let escaped_view = adapter
+        .object_definition(&object(ObjectKind::View, "odd \"view", None))
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(view.starts_with("CREATE VIEW active_users"));
+    assert!(escaped_view.starts_with("CREATE VIEW \"odd \"\"view\""));
+    assert!(index.starts_with("CREATE INDEX users_name_idx"));
+    assert!(trigger.starts_with("CREATE TRIGGER users_touch"));
+    assert!(view.ends_with(';') && index.ends_with(';') && trigger.ends_with(';'));
+}
+
+#[tokio::test]
+async fn object_definition_returns_none_for_unsupported_sqlite_kind() {
+    let (adapter, _file) = setup_with_table().await;
+    assert!(adapter
+        .object_definition(&object(ObjectKind::Function, "missing", None))
+        .await
+        .unwrap()
+        .is_none());
+}
+
+#[tokio::test]
+async fn object_definition_errors_for_missing_supported_sqlite_object() {
+    let (adapter, _file) = setup_with_table().await;
+    assert!(adapter
+        .object_definition(&object(ObjectKind::View, "missing", None))
+        .await
+        .is_err());
 }

@@ -1,5 +1,5 @@
 use sqrit::db::mysql::MySqlAdapter;
-use sqrit::db::types::Value;
+use sqrit::db::types::{ObjectKind, ObjectRef, Value};
 use sqrit::db::Database;
 
 use std::net::{TcpStream, ToSocketAddrs};
@@ -26,6 +26,16 @@ async fn setup() -> MySqlAdapter {
     let mut adapter = MySqlAdapter::new(&db_url());
     adapter.connect().await.unwrap();
     adapter
+}
+
+fn mysql_object(kind: ObjectKind, name: &str, relation: Option<&str>) -> ObjectRef {
+    ObjectRef {
+        namespace: "sqrit_test".into(),
+        kind,
+        name: name.into(),
+        relation: relation.map(str::to_string),
+        identity_arguments: None,
+    }
 }
 
 async fn setup_with_table(table: &str) -> MySqlAdapter {
@@ -309,6 +319,27 @@ async fn connect_to_invalid_host_returns_error() {
     assert!(result.is_err());
 }
 
+#[tokio::test]
+async fn object_definition_returns_none_for_unsupported_kind_without_connection() {
+    let adapter = MySqlAdapter::new(&db_url());
+    assert_eq!(
+        adapter
+            .object_definition(&mysql_object(ObjectKind::Table, "users", None))
+            .await
+            .unwrap(),
+        None
+    );
+}
+
+#[tokio::test]
+async fn object_definition_errors_for_supported_kind_without_connection() {
+    let adapter = MySqlAdapter::new(&db_url());
+    assert!(adapter
+        .object_definition(&mysql_object(ObjectKind::View, "missing", None))
+        .await
+        .is_err());
+}
+
 // #13 SELECT with leading line comment is treated as row-returning
 #[tokio::test]
 #[ignore]
@@ -494,4 +525,61 @@ async fn in_transaction_tracks_begin_rollback() {
     assert!(adapter.in_transaction().await.unwrap());
     adapter.execute("ROLLBACK").await.unwrap();
     assert!(!adapter.in_transaction().await.unwrap());
+}
+
+#[tokio::test]
+#[ignore]
+async fn object_definition_returns_mysql_native_ddl() {
+    maybe_skip!();
+    let adapter = setup().await;
+    for sql in [
+        "DROP PROCEDURE IF EXISTS definition_noop",
+        "DROP FUNCTION IF EXISTS definition_lookup",
+        "DROP TRIGGER IF EXISTS definition_users_trigger",
+        "DROP VIEW IF EXISTS `odd ``view`",
+        "DROP VIEW IF EXISTS definition_users_v",
+        "DROP TABLE IF EXISTS definition_users",
+        "CREATE TABLE definition_users(id int primary key, email varchar(255))",
+        "CREATE UNIQUE INDEX definition_users_email_idx ON definition_users(email)",
+        "CREATE VIEW definition_users_v AS SELECT id FROM definition_users",
+        "CREATE VIEW `odd ``view` AS SELECT 1 AS id",
+        "CREATE TRIGGER definition_users_trigger BEFORE UPDATE ON definition_users FOR EACH ROW SET NEW.email = NEW.email",
+        "CREATE FUNCTION definition_lookup(value int) RETURNS int DETERMINISTIC RETURN value",
+        "CREATE PROCEDURE definition_noop() SELECT 1",
+    ] {
+        adapter.execute(sql).await.unwrap();
+    }
+
+    let index = adapter
+        .object_definition(&mysql_object(
+            ObjectKind::Index,
+            "definition_users_email_idx",
+            Some("definition_users"),
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(index.starts_with("ALTER TABLE `sqrit_test`.`definition_users` ADD UNIQUE KEY"));
+    assert!(index.ends_with(';'));
+
+    for object in [
+        mysql_object(ObjectKind::View, "definition_users_v", None),
+        mysql_object(
+            ObjectKind::Trigger,
+            "definition_users_trigger",
+            Some("definition_users"),
+        ),
+        mysql_object(ObjectKind::Function, "definition_lookup", None),
+        mysql_object(ObjectKind::Procedure, "definition_noop", None),
+    ] {
+        let ddl = adapter.object_definition(&object).await.unwrap().unwrap();
+        assert!(ddl.to_uppercase().contains("CREATE"));
+        assert!(ddl.ends_with(';'));
+    }
+    let escaped = adapter
+        .object_definition(&mysql_object(ObjectKind::View, "odd `view", None))
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(escaped.contains("`odd ``view`"));
 }

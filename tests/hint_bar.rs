@@ -214,6 +214,7 @@ fn global_suffix_is_rendered_only_where_both_shortcuts_are_active() {
         (Mode::ThemePicker, false),
         (Mode::Help, false),
         (Mode::CellViewer, false),
+        (Mode::DefinitionViewer, false),
         (Mode::HistoryPicker, false),
         (Mode::ResultsFilter, false),
     ] {

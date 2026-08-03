@@ -5,11 +5,12 @@ use async_trait::async_trait;
 use sqlx::postgres::{PgConnection, PgPoolOptions};
 use sqlx::{ConnectOptions, Connection, Row, TypeInfo, ValueRef};
 
+use super::quote::quote_pg;
 use super::types::{
-    sqlx_result_columns, ColumnInfo, IndexObject, Namespace, QueryResult, RoutineObject,
-    SchemaInfo, SequenceObject, TableObject, TriggerObject, Value, ViewObject,
+    sqlx_result_columns, ColumnInfo, IndexObject, Namespace, ObjectKind, ObjectRef, QueryResult,
+    RoutineObject, SchemaInfo, SequenceObject, TableObject, TriggerObject, Value, ViewObject,
 };
-use super::Database;
+use super::{finish_definition, Database};
 
 fn pg_row_to_value(row: &sqlx::postgres::PgRow, i: usize) -> Value {
     row.try_get_raw(i).map_or(Value::Null, |raw| {
@@ -179,12 +180,13 @@ impl PgAdapter {
             .pool
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("not connected"))?;
-        let rows = sqlx::query_as::<_, (String, Option<String>)>(
-            "SELECT p.proname, pg_catalog.format_type(p.prorettype, NULL)
+        let rows = sqlx::query_as::<_, (String, Option<String>, String)>(
+            "SELECT p.proname, pg_catalog.format_type(p.prorettype, NULL),
+                    pg_get_function_identity_arguments(p.oid)
              FROM pg_proc p
              JOIN pg_namespace n ON n.oid = p.pronamespace
              WHERE n.nspname = $1 AND p.prokind = $2::\"char\"
-             ORDER BY p.proname",
+             ORDER BY p.proname, pg_get_function_identity_arguments(p.oid)",
         )
         .bind(schema)
         .bind(prokind.to_string())
@@ -192,7 +194,11 @@ impl PgAdapter {
         .await?;
         Ok(rows
             .into_iter()
-            .map(|(name, return_type)| RoutineObject { name, return_type })
+            .map(|(name, return_type, identity_arguments)| RoutineObject {
+                name,
+                return_type,
+                identity_arguments: Some(identity_arguments),
+            })
             .collect())
     }
 
@@ -504,6 +510,107 @@ impl Database for PgAdapter {
             });
         }
         Ok(SchemaInfo { namespaces })
+    }
+
+    async fn object_definition(&self, object: &ObjectRef) -> anyhow::Result<Option<String>> {
+        if !object.kind.supports_definition() {
+            return Ok(None);
+        }
+        let pool = self
+            .pool
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("not connected"))?;
+        let definition = match object.kind {
+            ObjectKind::View | ObjectKind::MaterializedView => {
+                let relkind = if object.kind == ObjectKind::View {
+                    "v"
+                } else {
+                    "m"
+                };
+                let body = sqlx::query_scalar::<_, String>(
+                    "SELECT pg_get_viewdef(c.oid, true)
+                     FROM pg_class c
+                     JOIN pg_namespace n ON n.oid = c.relnamespace
+                     WHERE n.nspname = $1 AND c.relname = $2 AND c.relkind = $3::\"char\"",
+                )
+                .bind(&object.namespace)
+                .bind(&object.name)
+                .bind(relkind)
+                .fetch_optional(pool)
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("PostgreSQL object not found"))?;
+                let kind = if object.kind == ObjectKind::View {
+                    "VIEW"
+                } else {
+                    "MATERIALIZED VIEW"
+                };
+                let body = body.trim().trim_end_matches(';');
+                format!(
+                    "CREATE {kind} {}.{} AS\n{body};",
+                    quote_pg(&object.namespace),
+                    quote_pg(&object.name)
+                )
+            }
+            ObjectKind::Index => sqlx::query_scalar::<_, String>(
+                "SELECT pg_get_indexdef(c.oid)
+                 FROM pg_class c
+                 JOIN pg_namespace n ON n.oid = c.relnamespace
+                 WHERE n.nspname = $1 AND c.relname = $2 AND c.relkind IN ('i', 'I')",
+            )
+            .bind(&object.namespace)
+            .bind(&object.name)
+            .fetch_optional(pool)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("PostgreSQL object not found"))?,
+            ObjectKind::Trigger => {
+                let relation = object
+                    .relation
+                    .as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("trigger is missing its owning relation"))?;
+                sqlx::query_scalar::<_, String>(
+                    "SELECT pg_get_triggerdef(t.oid, true)
+                     FROM pg_trigger t
+                     JOIN pg_class r ON r.oid = t.tgrelid
+                     JOIN pg_namespace n ON n.oid = r.relnamespace
+                     WHERE n.nspname = $1 AND r.relname = $2 AND t.tgname = $3
+                       AND NOT t.tgisinternal",
+                )
+                .bind(&object.namespace)
+                .bind(relation)
+                .bind(&object.name)
+                .fetch_optional(pool)
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("PostgreSQL object not found"))?
+            }
+            ObjectKind::Function | ObjectKind::Procedure => {
+                let identity = object
+                    .identity_arguments
+                    .as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("routine is missing identity arguments"))?;
+                let prokind = if object.kind == ObjectKind::Function {
+                    "f"
+                } else {
+                    "p"
+                };
+                sqlx::query_scalar::<_, String>(
+                    "SELECT pg_get_functiondef(p.oid)
+                     FROM pg_proc p
+                     JOIN pg_namespace n ON n.oid = p.pronamespace
+                     WHERE n.nspname = $1 AND p.proname = $2
+                       AND pg_get_function_identity_arguments(p.oid) = $3
+                       AND p.prokind = $4::\"char\"",
+                )
+                .bind(&object.namespace)
+                .bind(&object.name)
+                .bind(identity)
+                .bind(prokind)
+                .fetch_optional(pool)
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("PostgreSQL object not found"))?
+            }
+            _ => return Ok(None),
+        };
+        Ok(Some(finish_definition(&definition)))
     }
 
     fn clone_box(&self) -> Box<dyn Database> {

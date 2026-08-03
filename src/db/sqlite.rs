@@ -5,10 +5,10 @@ use async_trait::async_trait;
 use crate::sql::{tokenize, TokenKind};
 
 use super::types::{
-    ColumnInfo, IndexObject, Namespace, QueryResult, ResultColumn, SchemaInfo, TableObject,
-    TriggerObject, Value, ViewObject,
+    ColumnInfo, IndexObject, Namespace, ObjectKind, ObjectRef, QueryResult, ResultColumn,
+    SchemaInfo, TableObject, TriggerObject, Value, ViewObject,
 };
-use super::Database;
+use super::{finish_definition, Database};
 
 fn trigger_event(sql: &str) -> String {
     tokenize(sql)
@@ -297,6 +297,39 @@ impl Database for SqliteAdapter {
                 sequences: vec![],
             }],
         })
+    }
+
+    async fn object_definition(&self, object: &ObjectRef) -> anyhow::Result<Option<String>> {
+        let object_type = match object.kind {
+            ObjectKind::View => "view",
+            ObjectKind::Index => "index",
+            ObjectKind::Trigger => "trigger",
+            _ => return Ok(None),
+        };
+        let conn = self
+            .conn
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("not connected"))?;
+        let conn = Arc::clone(conn);
+        let name = object.name.clone();
+        let object_type = object_type.to_string();
+        tokio::task::spawn_blocking(move || {
+            use rusqlite::OptionalExtension;
+
+            let conn = conn.lock().unwrap();
+            let sql: Option<Option<String>> = conn
+                .query_row(
+                    "SELECT sql FROM sqlite_schema WHERE type = ?1 AND name = ?2",
+                    rusqlite::params![object_type, name],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            let sql = sql
+                .flatten()
+                .ok_or_else(|| anyhow::anyhow!("SQLite object definition not found"))?;
+            Ok(Some(finish_definition(&sql)))
+        })
+        .await?
     }
 
     fn clone_box(&self) -> Box<dyn Database> {

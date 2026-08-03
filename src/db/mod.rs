@@ -6,7 +6,7 @@ pub mod sqlite;
 pub mod types;
 
 use async_trait::async_trait;
-use types::{ColumnInfo, QueryResult, SchemaInfo};
+use types::{ColumnInfo, ObjectRef, QueryResult, SchemaInfo};
 
 #[async_trait]
 pub trait Database: Send + Sync {
@@ -24,6 +24,10 @@ pub trait Database: Send + Sync {
     async fn list_columns(&self, table: &str) -> anyhow::Result<Vec<ColumnInfo>>;
     async fn schema_info(&self) -> anyhow::Result<SchemaInfo>;
 
+    async fn object_definition(&self, _object: &ObjectRef) -> anyhow::Result<Option<String>> {
+        Ok(None)
+    }
+
     /// Cancel any query currently running on this connection. No-op when
     /// nothing is in flight. Each adapter uses its native mechanism — see
     /// ADR 6 (SQLite: InterruptHandle, PG: pg_cancel_backend, MySQL: KILL
@@ -40,6 +44,15 @@ pub trait Database: Send + Sync {
     }
 
     fn clone_box(&self) -> Box<dyn Database>;
+}
+
+pub(crate) fn finish_definition(sql: &str) -> String {
+    let sql = sql.trim();
+    if sql.ends_with(';') {
+        sql.to_string()
+    } else {
+        format!("{sql};")
+    }
 }
 
 #[cfg(test)]

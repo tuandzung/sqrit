@@ -9,6 +9,9 @@ const ALL_MODES: &[Mode] = &[
     Mode::ThemePicker,
     Mode::Help,
     Mode::CellViewer,
+    Mode::DefinitionViewer,
+    Mode::HistoryPicker,
+    Mode::ResultsFilter,
 ];
 
 #[test]

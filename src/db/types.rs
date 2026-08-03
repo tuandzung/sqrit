@@ -150,6 +150,7 @@ pub struct TriggerObject {
 pub struct RoutineObject {
     pub name: String,
     pub return_type: Option<String>,
+    pub identity_arguments: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -170,6 +171,24 @@ pub enum ObjectKind {
     Sequence,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ObjectRef {
+    pub namespace: String,
+    pub kind: ObjectKind,
+    pub name: String,
+    pub relation: Option<String>,
+    pub identity_arguments: Option<String>,
+}
+
+impl ObjectRef {
+    pub fn label(&self) -> String {
+        match self.identity_arguments.as_deref() {
+            Some(arguments) => format!("{}({arguments})", self.name),
+            None => self.name.clone(),
+        }
+    }
+}
+
 impl ObjectKind {
     pub fn group_label(self) -> &'static str {
         match self {
@@ -186,6 +205,18 @@ impl ObjectKind {
 
     pub fn supports_select_star(self) -> bool {
         matches!(self, Self::Table | Self::View | Self::MaterializedView)
+    }
+
+    pub fn supports_definition(self) -> bool {
+        matches!(
+            self,
+            Self::View
+                | Self::MaterializedView
+                | Self::Index
+                | Self::Trigger
+                | Self::Function
+                | Self::Procedure
+        )
     }
 }
 

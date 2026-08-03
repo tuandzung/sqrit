@@ -53,6 +53,8 @@ pub fn test_app() -> App {
         theme_picker: None,
         help: None,
         cell_viewer: None,
+        definition_viewer: None,
+        definition_request_id: 0,
         history_picker: None,
         clipboard_writer: sqrit::clipboard::ClipboardWriter::new(),
         app_config: Default::default(),
